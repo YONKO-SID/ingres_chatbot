@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INGRES ChatBot - Groundwater Assistant</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🌊 INGRES ChatBot</h1>
+                <p>AI-Powered Groundwater Resource Assistant</p>
+                <div class="status-indicator">
+                    <span id="connectionStatus" class="status-dot offline"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Chat Interface -->
+        <main class="chat-container">
+            <!-- Chat Messages Area -->
+            <div id="chatMessages" class="chat-messages">
+                <!-- Welcome message will be inserted here -->
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="quick-actions">
+                <button class="quick-btn" onclick="sendQuickQuery('Show groundwater data for Punjab')">
+                    📊 Punjab Data
+                </button>
+                <button class="quick-btn" onclick="sendQuickQuery('Compare Maharashtra and Gujarat')">
+                    🔄 Compare States
+                </button>
+                <button class="quick-btn" onclick="sendQuickQuery('Show critical areas')">
+                    ⚠️ Critical Areas
+                </button>
+                <button class="quick-btn" onclick="sendQuickQuery('Help me understand groundwater categories')">
+                    ❓ Help
+                </button>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="userInput" 
+                        placeholder="Ask me about groundwater data in India..."
+                        maxlength="500"
+                        autocomplete="off"
+                    >
+                    <button id="sendButton" onclick="sendMessage()" disabled>
+                        <span id="sendIcon">📤</span>
+                    </button>
+                </div>
+                <div class="input-info">
+                    <span id="charCount">0/500</span>
+                    <span class="separator">•</span>
+                    <span id="typingIndicator" class="typing-indicator hidden">Bot is typing...</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Smart India Hackathon 2024 | Built with ❤️ in C</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <p>Processing your query...</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
