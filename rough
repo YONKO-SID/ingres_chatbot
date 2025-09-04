@@ -15,3 +15,10 @@ LETS TRY IT
 
 -----> CHATBOT.H HEADER FILE
 in this header file i will have to define functions that doesn't exist normally
+-----> CHATBOT.C file
+in this file i am adding responses and all
+
+ABHINAV - web interface (UI/UX and frontend)
+RAM - Databse postgresql 
+TANYA - flask and django to create a seprate microservice and an api call layer 
+ME - 

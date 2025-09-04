@@ -1,97 +1,100 @@
-/*
- * INGRES ChatBot - Main Entry Point
- * Simple terminal interface to test your chatbot
- */
-
-#include "utils.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "chatbot.h"
+#include "utils.h"
 
-void print_welcome_banner(void) {
-    print_colored(COLOR_CYAN, "╔══════════════════════════════════════════════════════════════╗\n");
-    print_colored(COLOR_CYAN, "║                    INGRES CHATBOT v1.0                      ║\n");
-    print_colored(COLOR_CYAN, "║              AI-Powered Groundwater Assistant                ║\n");
-    print_colored(COLOR_CYAN, "║                Smart India Hackathon 2024                   ║\n");
-    print_colored(COLOR_CYAN, "╚══════════════════════════════════════════════════════════════╝\n\n");
-}
+// Simple test queries for demonstration
+const char* test_queries[] = {
+    "Hello",
+    "Show me Punjab groundwater data",
+    "Which areas are critical?",
+    "Water crisis areas",
+    "Policy suggestions for Maharashtra", 
+    "How does rainfall affect groundwater?",
+    "Compare Punjab and Haryana",
+    "Safe areas in India",
+    "Help",
+    "Bot status",
+    "Bye"
+};
 
-void print_help_commands(void) {
-    print_info("Available commands:");
-    printf("  • Ask about any location: 'Show me Punjab data'\n");
-    printf("  • Compare regions: 'Compare Punjab and Maharashtra'\n");
-    printf("  • Find critical areas: 'Show critical areas'\n");
-    printf("  • Get help: 'help'\n");
-    printf("  • Exit: 'quit' or 'exit'\n\n");
-}
-
-int main(void) {
-    print_welcome_banner();
-
+int main() {
+    printf("*** INGRES ChatBot - Quick Test Program ***\n");
+    printf("==========================================\n\n");
+    
     // Initialize chatbot
-    print_info("Initializing INGRES ChatBot...");
-
     if (!chatbot_init()) {
-        print_error("Failed to initialize chatbot!");
+        printf("❌ Failed to initialize chatbot!\n");
         return 1;
     }
-
-    print_success("ChatBot initialized successfully!");
-    print_help_commands();
-
-    // Main chat loop
-    while (true) {
-        // Get user input
-        string user_input = get_string("🌊 Ask me about groundwater: ");
-
-        // Check for exit commands
-        if (!user_input || STR_EQUALS(user_input, "quit") || STR_EQUALS(user_input, "exit")) {
-            SAFE_FREE(user_input);
+    
+    printf("[OK] ChatBot initialized successfully!\n\n");
+    
+    // Test predefined queries
+    printf("*** TESTING PREDEFINED QUERIES ***\n");
+    printf("==================================\n\n");
+    
+    int num_tests = sizeof(test_queries) / sizeof(test_queries[0]);
+    
+    for (int i = 0; i < num_tests; i++) {
+        printf("USER: %s\n", test_queries[i]);
+        printf("BOT:  ");
+        
+        // Generate response using our function
+        IntentType intent = classify_intent(test_queries[i]);
+        char* response = generate_response(intent, "Punjab", test_queries[i]);
+        
+        if (response) {
+            printf("%s\n", response);
+            free(response);
+        } else {
+            printf("Error generating response\n");
+        }
+        
+        printf("\n----------------------------------------\n\n");
+    }
+    
+    // Interactive mode
+    printf("*** INTERACTIVE MODE ***\n");
+    printf("========================\n");
+    printf("Type your queries (or 'quit' to exit):\n\n");
+    
+    char input[MAX_INPUT_LENGTH];
+    while (1) {
+        printf("YOU: ");
+        fflush(stdout);
+        
+        if (!fgets(input, sizeof(input), stdin)) {
             break;
         }
-
-        // Skip empty input
-        if (STR_EMPTY(user_input)) {
-            SAFE_FREE(user_input);
+        
+        // Remove newline
+        input[strcspn(input, "\n")] = 0;
+        
+        if (strcmp(input, "quit") == 0 || strcmp(input, "exit") == 0) {
+            printf("BOT: Thank you for testing INGRES ChatBot! Goodbye!\n");
+            break;
+        }
+        
+        if (strlen(input) == 0) {
             continue;
         }
-
-        // Process the query
-        printf("\n");
-        print_info("Processing your query...");
-
-        BotResponse* response = process_user_query(user_input);
-
+        
+        IntentType intent = classify_intent(input);
+        char* response = generate_response(intent, "TestLocation", input);
+        
         if (response) {
-            // Print the response
-            print_colored(COLOR_GREEN, "🤖 Bot: ");
-            printf("%s\n", response->message);
-
-            // Print additional data if available
-            if (response->has_data && response->data_points) {
-                printf("\n📊 Additional Information:\n");
-                for (int i = 0; i < response->data_points->count; i++) {
-                    string data_point = string_array_get(response->data_points, i);
-                    printf("   • %s\n", data_point);
-                }
-            }
-
-            // Show processing time
-            if (response->processing_time_ms > 0) {
-                print_colored(COLOR_YELLOW, "⏱️  Processed in %.2fms\n", response->processing_time_ms);
-            }
-
-            free_bot_response(response);
+            printf("BOT: %s\n\n", response);
+            free(response);
         } else {
-            print_error("Sorry, I encountered an error processing your request.");
+            printf("BOT: Sorry, I encountered an error processing your request.\n\n");
         }
-
-        printf("\n");
-        SAFE_FREE(user_input);
     }
-
+    
     // Cleanup
-    print_info("Shutting down INGRES ChatBot...");
     chatbot_cleanup();
-    print_success("Goodbye! Thank you for using INGRES ChatBot!");
-
+    printf("\n[OK] ChatBot cleanup completed. Goodbye!\n");
+    
     return 0;
 }
