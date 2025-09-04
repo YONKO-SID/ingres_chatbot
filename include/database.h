@@ -2,6 +2,7 @@
 #define DATABASE_H
 
 #include <stdbool.h>
+#include <libpq-fe.h>
 
 // Groundwater assessment data structure based on CGWB format
 typedef struct {

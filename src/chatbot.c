@@ -1,6 +1,7 @@
 #include "chatbot.h"
 #include "utils.h"
 #include "database.h"
+#include "intent_patterns.h"
 #include <math.h>
 #include <ctype.h>
 #include <string.h>
@@ -9,67 +10,11 @@
 #include <time.h>
 
 
-// Leviathan algorithm implementation for fuzzy matching
-typedef struct {
-    char* pattern;
-    float threshold;
-    int max_matches;
-} FuzzyMatcher;
-
-typedef struct {
-    char* pattern;
-    int max_matches;
-} SimpleMatcher;
-typedef struct {
-    char* pattern;
-    int max_matches;
-} RegexMatcher;
-typedef struct {
-    char* pattern;
-    int max_matches;
-} LevenshteinMatcher;
+// Intent classification is now handled by intent_patterns.c
 bool chatbot_init(void);
 void chatbot_cleanup(void);
 IntentType classify_intent(const char* user_input);
-// simple levenshtein distance implementation
-int levenshtein_distance(const char* str1, const char* str2) {
-    int len1 = strlen(str1);
-    int len2 = strlen(str2);
-
-    // Allocate memory on the heap to prevent stack overflow for long strings
-    int** matrix = malloc((len1 + 1) * sizeof(int*));
-    if (matrix == NULL) return -1; // Allocation failed
-    for (int i = 0; i <= len1; i++) {
-        matrix[i] = malloc((len2 + 1) * sizeof(int));
-        if (matrix[i] == NULL) {
-            // Cleanup on partial allocation failure
-            for (int k = 0; k < i; k++) free(matrix[k]);
-            free(matrix);
-            return -1;
-        }
-    }
-
-    for (int i = 0; i <= len1; i++)
-        matrix[i][0] = i;
-    for (int j = 0; j <= len2; j++)
-        matrix[0][j] = j;
-
-    for (int i = 1; i <= len1; i++) {
-        for (int j = 1; j <= len2; j++) {
-            matrix[i][j] = (str1[i - 1] == str2[j - 1]) ?
-                matrix[i - 1][j - 1] :
-                1 + fmin(matrix[i - 1][j], fmin(matrix[i][j - 1], matrix[i - 1][j - 1]));
-        }
-    }
-
-    int result = matrix[len1][len2];
-
-    // Free the allocated memory
-    for (int i = 0; i <= len1; i++) free(matrix[i]);
-    free(matrix);
-
-    return result;
-}
+// Intent classification is now handled by intent_patterns.c
 
 bool chatbot_init(void) {
     // Initializing the database
@@ -86,139 +31,12 @@ void chatbot_cleanup(void) {
 }
 
 IntentType classify_intent(const char* user_input) {
-    // Convert to lowercase for better matching
-    char* lower_input = string_to_lower(user_input);
-    if (!lower_input) return INTENT_ERROR;
-    
-    // Greeting patterns - check first
-    if (strstr(lower_input, "hello") || strstr(lower_input, "hi") || 
-        strstr(lower_input, "namaste") || strstr(lower_input, "hey") ||
-        strstr(lower_input, "good morning") || strstr(lower_input, "good evening") ||
-        strstr(lower_input,"good night")|| strstr(lower_input,"pranam")) {
-        free(lower_input);
-        return INTENT_GREETING;
+    if (!user_input || strlen(user_input) == 0) {
+        return INTENT_UNKNOWN;
     }
     
-    // Goodbye patterns
-    if (strstr(lower_input, "bye") || strstr(lower_input, "goodbye") || 
-        strstr(lower_input, "exit") || strstr(lower_input, "quit") ||
-        strstr(lower_input, "see you") || strstr(lower_input, "thanks")) {
-        free(lower_input);
-        return INTENT_GOODBYE;
-    }
-    
-    // Help patterns - very specific
-    if (strstr(lower_input, "help") || strstr(lower_input, "how to use") ||
-        strstr(lower_input, "what can you do") || strstr(lower_input, "commands") ||
-        strstr(lower_input, "options") || strstr(lower_input, "guide")) {
-        free(lower_input);
-        return INTENT_HELP;
-    }
-    
-    // Status patterns - very specific
-    if ((strstr(lower_input, "status") && strstr(lower_input, "bot")) ||
-        (strstr(lower_input, "system") && strstr(lower_input, "status")) ||
-        strstr(lower_input, "bot status") || strstr(lower_input, "chatbot status")) {
-        free(lower_input);
-        return INTENT_STATUS;
-    }
-    
-    // Query category patterns - specific category searches
-    if ((strstr(lower_input, "show") && (strstr(lower_input, "over-exploited") || strstr(lower_input, "semi-critical"))) ||
-        (strstr(lower_input, "list") && (strstr(lower_input, "critical") || strstr(lower_input, "safe"))) ||
-        strstr(lower_input, "category") || strstr(lower_input, "classification")) {
-        free(lower_input);
-        return INTENT_QUERY_CATEGORY;
-    }
-    
-    // Critical areas patterns - enhanced (check before other patterns)
-    if (strstr(lower_input, "critical areas") || strstr(lower_input, "critical regions") ||
-        strstr(lower_input, "over-exploited") || strstr(lower_input, "over exploited") ||
-        (strstr(lower_input, "which") && strstr(lower_input, "critical")) ||
-        (strstr(lower_input, "which") && strstr(lower_input, "serious")) ||
-        (strstr(lower_input, "show") && strstr(lower_input, "critical")) ||
-        (strstr(lower_input, "areas") && strstr(lower_input, "critical")) ||
-        (strstr(lower_input, "areas") && strstr(lower_input, "serious")) ||
-        strstr(lower_input, "dangerous areas") || strstr(lower_input, "problem areas") ||
-        strstr(lower_input, "critical groundwater")) {
-        free(lower_input);
-        return INTENT_CRITICAL_AREAS;
-    }
-    
-    // Safe areas patterns - enhanced
-    if ((strstr(lower_input, "safe") && (strstr(lower_input, "area") || strstr(lower_input, "region") || strstr(lower_input, "zone"))) ||
-        (strstr(lower_input, "which") && strstr(lower_input, "safe")) ||
-        (strstr(lower_input, "show") && strstr(lower_input, "safe")) ||
-        strstr(lower_input, "sustainable areas") || strstr(lower_input, "good areas")) {
-        free(lower_input);
-        return INTENT_SAFE_AREAS;
-    }
-    
-    // Water crisis patterns - enhanced
-    if (strstr(lower_input, "water crisis") || strstr(lower_input, "water shortage") ||
-        strstr(lower_input, "water stress") || strstr(lower_input, "drought") ||
-        strstr(lower_input, "water scarcity") || strstr(lower_input, "water problem") ||
-        (strstr(lower_input, "crisis") && strstr(lower_input, "area"))) {
-        free(lower_input);
-        return INTENT_WATER_CRISIS;
-    }
-    
-    // Rainfall correlation patterns - enhanced
-    if (strstr(lower_input, "rainfall") || strstr(lower_input, "monsoon") ||
-        strstr(lower_input, "precipitation") || strstr(lower_input, "rain") ||
-        (strstr(lower_input, "how") && strstr(lower_input, "rain")) ||
-        strstr(lower_input, "weather impact") || strstr(lower_input, "climate")) {
-        free(lower_input);
-        return INTENT_RAINFALL_CORRELATION;
-    }
-    
-    // Policy suggestion patterns - enhanced
-    if (strstr(lower_input, "policy") || strstr(lower_input, "suggestion") ||
-        strstr(lower_input, "recommendation") || strstr(lower_input, "what should") ||
-        strstr(lower_input, "how to improve") || strstr(lower_input, "solution") ||
-        strstr(lower_input, "measures") || strstr(lower_input, "action")) {
-        free(lower_input);
-        return INTENT_POLICY_SUGGESTION;
-    }
-    
-    // Compare locations patterns - enhanced
-    if (strstr(lower_input, "compare") || strstr(lower_input, "vs") ||
-        strstr(lower_input, "versus") || strstr(lower_input, "difference between") ||
-        strstr(lower_input, "better than") || strstr(lower_input, "worse than") ||
-        (strstr(lower_input, "and") && (strstr(lower_input, "punjab") || strstr(lower_input, "haryana")))) {
-        free(lower_input);
-        return INTENT_COMPARE_LOCATIONS;
-    }
-    
-    // Historical trend patterns - enhanced
-    if (strstr(lower_input, "trend") || strstr(lower_input, "historical") ||
-        strstr(lower_input, "past data") || strstr(lower_input, "over time") ||
-        strstr(lower_input, "history") || strstr(lower_input, "previous") ||
-        strstr(lower_input, "change over") || strstr(lower_input, "timeline")) {
-        free(lower_input);
-        return INTENT_HISTORICAL_TREND;
-    }
-    
-    // Location query patterns - most flexible, check last
-    if (strstr(lower_input, "show") || strstr(lower_input, "data for") || 
-        strstr(lower_input, "groundwater in") || strstr(lower_input, "display") ||
-        strstr(lower_input, "tell me about") || strstr(lower_input, "information about") ||
-        strstr(lower_input, "status of") || strstr(lower_input, "what is") ||
-        strstr(lower_input, "punjab") || strstr(lower_input, "haryana") || 
-        strstr(lower_input, "rajasthan") || strstr(lower_input, "gujarat") ||
-        strstr(lower_input, "maharashtra") || strstr(lower_input, "karnataka") ||
-        strstr(lower_input, "tamil nadu") || strstr(lower_input, "kerala") ||
-        strstr(lower_input, "delhi") || strstr(lower_input, "mumbai") ||
-        strstr(lower_input, "bangalore") || strstr(lower_input, "chennai") ||
-        strstr(lower_input, "kolkata") || strstr(lower_input, "hyderabad") ||
-        strstr(lower_input, "amritsar") || strstr(lower_input, "ludhiana") ||
-        strstr(lower_input, "jaipur") || strstr(lower_input, "ahmedabad")) {
-        free(lower_input);
-        return INTENT_QUERY_LOCATION;
-    }
-    
-    free(lower_input);
-    return INTENT_UNKNOWN;
+    // Use the pattern matching system from intent_patterns.h/c
+    return match_patterns(user_input);
 }
 // Simplified process_user_input for testing
 BotResponse* process_user_input(const char* user_input) {
