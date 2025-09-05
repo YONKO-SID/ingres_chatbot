@@ -6,7 +6,7 @@ OBJDIR = obj
 BINDIR = bin
 
 # Source files
-SOURCES = $(SRCDIR)/main.c $(SRCDIR)/chatbot.c $(SRCDIR)/database_stub.c $(SRCDIR)/utils_stub.c
+SOURCES = $(SRCDIR)/main.c $(SRCDIR)/chatbot.c $(SRCDIR)/database_stub.c $(SRCDIR)/utils_stub.c $(SRCDIR)/intent_patterns.c $(SRCDIR)/enhanced_intent_patterns.c $(SRCDIR)/enhanced_response_generator.c
 OBJECTS = $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 TARGET = $(BINDIR)/ingres_chatbot
 

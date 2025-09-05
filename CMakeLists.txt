@@ -9,9 +9,12 @@ include_directories(include lib)
 add_executable(ingres_chatbot
         src/main.c
         src/utils.c
-        src/database.c # This file needs to be created
+        src/database.c
+        src/chatbot.c
+        src/intent_patterns.c
+        src/enhanced_intent_patterns.c
+        src/enhanced_response_generator.c
         lib/mongoose.c
-        src/chatbot.c  # This file needs the core logic
 )
 
 # Link any necessary libraries (e.g., for GLib if you use it, or math library)

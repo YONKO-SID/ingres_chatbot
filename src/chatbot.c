@@ -9,34 +9,131 @@
 #include <stdio.h>
 #include <time.h>
 
+// Forward declarations for enhanced functions
+extern IntentType classify_intent_advanced(const char* user_input, ConversationContext* context, float* confidence);
+extern BotResponse* generate_enhanced_response(IntentType intent, const char* user_input, 
+                                             ConversationContext* context, const char* location, 
+                                             const char* query_details);
+extern int extract_locations(const char* user_input, char** state, char** district, char** block);
+extern ConversationContext* init_conversation_context(void);
+extern void update_conversation_context(ConversationContext* context, const char* user_input, 
+                                      IntentType intent, const char* location);
+extern void free_conversation_context(ConversationContext* context);
+extern void free_enhanced_bot_response(BotResponse* response);
 
-// Intent classification is now handled by intent_patterns.c
-bool chatbot_init(void);
-void chatbot_cleanup(void);
-IntentType classify_intent(const char* user_input);
-// Intent classification is now handled by intent_patterns.c
+// Global conversation context for session management
+static ConversationContext* global_context = NULL;
 
 bool chatbot_init(void) {
-    // Initializing the database
+    // Initialize the database
     if (!db_init()) {
         print_error("Failed to initialize database!");
         return false;
     }
+    
+    // Initialize global conversation context
+    global_context = init_conversation_context();
+    if (!global_context) {
+        print_error("Failed to initialize conversation context!");
+        db_close();
+        return false;
+    }
+    
+    printf("[INIT] INGRES ChatBot initialized successfully!\n");
+    printf("[INIT] Enhanced intent system loaded with 70+ intent types\n");
+    printf("[INIT] Conversation context and fuzzy matching enabled\n");
+    printf("[INIT] Multi-language support ready\n");
+    
     return true;
 }
 
 void chatbot_cleanup(void) {
-    // Closing the database
-    db_close();
-}
-
-IntentType classify_intent(const char* user_input) {
-    if (!user_input || strlen(user_input) == 0) {
-        return INTENT_UNKNOWN;
+    // Clean up conversation context
+    if (global_context) {
+        free_conversation_context(global_context);
+        global_context = NULL;
     }
     
-    // Use the pattern matching system from intent_patterns.h/c
-    return match_patterns(user_input);
+    // Close the database
+    db_close();
+    
+    printf("[CLEANUP] INGRES ChatBot cleanup completed\n");
+}
+
+// Legacy function for backward compatibility
+IntentType classify_intent(const char* user_input) {
+    float confidence;
+    return classify_intent_advanced(user_input, global_context, &confidence);
+}
+
+// Enhanced main processing function
+BotResponse* process_user_query(const char* user_input) {
+    if (!user_input || strlen(user_input) == 0) {
+        BotResponse* error_response = malloc(sizeof(BotResponse));
+        if (error_response) {
+            error_response->message = strdup("Please provide a valid query.");
+            error_response->intent = INTENT_ERROR;
+            error_response->has_data = false;
+            error_response->confidence_score = 0.0;
+            error_response->suggestion_count = 0;
+        }
+        return error_response;
+    }
+    
+    clock_t start_time = clock();
+    
+    // Extract locations from user input
+    char* state = NULL;
+    char* district = NULL;
+    char* block = NULL;
+    int locations_found = extract_locations(user_input, &state, &district, &block);
+    
+    // Classify intent with enhanced system
+    float confidence;
+    IntentType intent = classify_intent_advanced(user_input, global_context, &confidence);
+    
+    // Determine primary location for context
+    char* primary_location = NULL;
+    if (state) {
+        primary_location = strdup(state);
+    } else if (district) {
+        primary_location = strdup(district);
+    } else if (global_context && global_context->last_location) {
+        primary_location = strdup(global_context->last_location);
+    }
+    
+    // Generate enhanced response
+    BotResponse* response = generate_enhanced_response(intent, user_input, global_context, 
+                                                     primary_location, user_input);
+    
+    if (response) {
+        // Update confidence score
+        response->confidence_score = confidence;
+        
+        // Calculate processing time
+        clock_t end_time = clock();
+        response->processing_time_ms = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
+        
+        // Update conversation context
+        update_conversation_context(global_context, user_input, intent, primary_location);
+        
+        // Add clarification if confidence is low
+        if (confidence < 0.5) {
+            response->requires_clarification = true;
+            response->clarification_question = strdup(
+                "I'm not entirely sure I understood your query correctly. "
+                "Could you please rephrase or provide more specific details?"
+            );
+        }
+    }
+    
+    // Clean up extracted locations
+    if (state) free(state);
+    if (district) free(district);
+    if (block) free(block);
+    if (primary_location) free(primary_location);
+    
+    return response;
 }
 // Simplified process_user_input for testing
 BotResponse* process_user_input(const char* user_input) {
