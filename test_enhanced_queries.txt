@@ -1,0 +1,244 @@
+# INGRES ChatBot - Comprehensive Test Queries
+# Testing all 70+ intents with various input patterns
+
+# === BASIC INTERACTION TESTS ===
+Hello there
+Hi INGRES
+Good morning chatbot
+Namaste
+Hey, how are you?
+Goodbye
+Thanks and bye
+Exit
+Quit
+
+# === LOCATION QUERY TESTS ===
+Show me Punjab groundwater data
+What is the groundwater status of Maharashtra?
+Tell me about Amritsar district
+Groundwater information for Gujarat
+Data for Ludhiana block
+Show Bangalore urban groundwater
+What about Chennai water situation?
+Rajasthan groundwater details
+Information about Haryana
+Delhi water table status
+
+# === MULTIPLE LOCATION TESTS ===
+Show data for Punjab, Haryana, and Gujarat
+Compare multiple states groundwater
+Information for all northern states
+Data for major cities in India
+Show me top 5 critical states
+
+# === CATEGORY & CLASSIFICATION TESTS ===
+Which areas are critical?
+Show me over-exploited regions
+Safe groundwater areas in India
+Semi-critical zones
+What does over-exploited mean?
+Explain groundwater categories
+How are areas classified?
+Classification criteria for groundwater
+Category definitions
+
+# === COMPARISON TESTS ===
+Compare Punjab vs Haryana
+Difference between Gujarat and Rajasthan groundwater
+Punjab versus Maharashtra water status
+Compare safe and critical areas
+Rank states by groundwater depletion
+Best and worst performing states
+Compare 2022 vs 2023 data
+Yearly comparison for Punjab
+
+# === TREND ANALYSIS TESTS ===
+Historical trend for Maharashtra
+Show me 5-year trend for Punjab
+Groundwater change over time in Gujarat
+Rate of depletion in Haryana
+Future predictions for Tamil Nadu
+Seasonal analysis for Karnataka
+Monsoon impact trends
+Long-term patterns in Rajasthan
+
+# === CRISIS & EMERGENCY TESTS ===
+Water crisis areas in India
+Emergency intervention needed where?
+Drought affected regions
+Areas facing severe water shortage
+Climate change impact on groundwater
+Flood impact on water table
+Most critical water situations
+Urgent attention required areas
+
+# === ENVIRONMENTAL FACTOR TESTS ===
+How does rainfall affect groundwater?
+Monsoon impact on water recharge
+Temperature effects on groundwater
+Soil type and groundwater relation
+Geological factors affecting water
+Climate change effects on aquifers
+Seasonal variations in water levels
+Weather patterns and groundwater
+
+# === POLICY & MANAGEMENT TESTS ===
+Policy recommendations for Punjab
+What should government do for water crisis?
+Conservation methods for groundwater
+Water management strategies
+Government schemes for water conservation
+Successful conservation examples
+Regulation information for groundwater
+Artificial recharge methods
+
+# === TECHNICAL & SCIENTIFIC TESTS ===
+Explain stage of extraction
+What is MCM unit?
+How is recharge calculated?
+CGWB assessment methodology
+Technical explanation of categories
+Data source information
+Calculation methods for groundwater
+Scientific basis of classification
+
+# === AGRICULTURAL TESTS ===
+Agriculture impact on groundwater
+Suitable crops for water-scarce areas
+Irrigation efficiency analysis
+Farming practices for water conservation
+Crop recommendations for Punjab
+Industrial water usage impact
+Sustainable agriculture methods
+Water-intensive crops to avoid
+
+# === URBAN & INFRASTRUCTURE TESTS ===
+Urban groundwater challenges
+City-wise water availability
+Mumbai water infrastructure needs
+Delhi groundwater status
+Population impact on water resources
+Smart city water management
+Urban planning for water conservation
+Infrastructure requirements for water
+
+# === ECONOMIC & SOCIAL TESTS ===
+Economic cost of water crisis
+Social effects of water scarcity
+Impact on farmer livelihoods
+Water-induced migration patterns
+Cost-benefit of conservation methods
+Economic analysis of policies
+Social impact assessment
+Livelihood effects of groundwater depletion
+
+# === ADVANCED ANALYTICS TESTS ===
+Correlation between rainfall and groundwater
+Statistical analysis of water trends
+Machine learning insights for water
+Anomaly detection in groundwater data
+Predictive modeling for water crisis
+Data analytics for water management
+AI-based water predictions
+Pattern recognition in water data
+
+# === CONTEXT-AWARE TESTS ===
+Tell me more about that
+Can you elaborate on the previous answer?
+What do you mean by critical?
+Go back to Punjab discussion
+More details about conservation
+Explain that technical term
+Clarify the previous response
+Continue with the analysis
+
+# === MULTI-LANGUAGE TESTS ===
+Switch to Hindi
+Respond in regional language
+Hindi mein jawab do
+Local language support
+Translate to Hindi
+Language change request
+
+# === HELP & GUIDANCE TESTS ===
+Help me understand groundwater
+What can you do?
+List all commands
+How to use this chatbot?
+Guide me through the features
+What information do you provide?
+Capabilities of INGRES
+Tutorial for using chatbot
+
+# === DATA EXPORT & REPORTING TESTS ===
+Export Punjab data to CSV
+Generate detailed report for Gujarat
+Summary statistics for India
+Show me charts for trends
+Visualization of groundwater data
+Create report for Maharashtra
+Download data in Excel format
+Statistical summary of all states
+
+# === INTEGRATION & API TESTS ===
+API endpoint information
+Real-time monitoring data
+Integration with external systems
+Live data feeds
+Automated alerts setup
+API documentation
+Data integration capabilities
+Real-time updates available?
+
+# === COMPLEX QUERY TESTS ===
+Show me the most critical over-exploited areas in northern India with historical trends and policy recommendations
+Compare groundwater depletion rates between agricultural and industrial regions over the past decade
+What are the combined effects of climate change, population growth, and agricultural intensification on groundwater in Punjab?
+Analyze the correlation between monsoon patterns and groundwater recharge efficiency across different geological zones in India
+Provide a comprehensive assessment of water crisis in urban areas with population over 1 million and suggest integrated solutions
+
+# === EDGE CASE TESTS ===
+asdfghjkl (gibberish)
+12345 (numbers only)
+!@#$%^&*() (special characters)
+(empty query)
+Very very very long query that goes on and on and tests the system's ability to handle extremely lengthy user inputs that might contain multiple topics and questions all mixed together without proper structure or punctuation making it difficult to parse and understand what the user actually wants to know about groundwater resources in India
+punjab (single word)
+? (single question mark)
+groundwater (single technical term)
+
+# === FOLLOW-UP CONVERSATION TESTS ===
+# (These should be tested in sequence to check context awareness)
+Show me Punjab data
+Tell me more about the critical areas there
+What conservation methods would work?
+Compare with neighboring states
+What are the policy recommendations?
+How successful have similar policies been?
+Show me the economic analysis
+What about social impacts?
+Any success stories?
+Thank you for the information
+
+# === VOICE/ACCESSIBILITY TESTS ===
+(Voice input simulation)
+Read the response aloud
+Screen reader compatible format
+Accessibility features available?
+Voice command support
+Audio output options
+Text-to-speech capabilities
+Keyboard navigation support
+
+# === PERFORMANCE TESTS ===
+# (Multiple rapid queries to test system performance)
+Punjab
+Haryana  
+Gujarat
+Rajasthan
+Maharashtra
+Karnataka
+Tamil Nadu
+Andhra Pradesh
+West Bengal
+Uttar Pradesh
