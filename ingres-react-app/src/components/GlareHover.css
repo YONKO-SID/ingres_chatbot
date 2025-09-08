@@ -1,0 +1,25 @@
+.glare-hover-container {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid;
+}
+
+.glare-hover-container .glare {
+  position: absolute;
+  top: var(--mouse-y);
+  left: var(--mouse-x);
+  width: var(--glare-size);
+  height: var(--glare-size);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    var(--glare-color) 0%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity var(--transition-duration) ease;
+}
+
+.glare-hover-container.hover .glare {
+  opacity: var(--glare-opacity);
+}
