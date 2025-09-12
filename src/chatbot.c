@@ -1,155 +1,176 @@
 #include "chatbot.h"
-#include "utils.h"
 #include "database.h"
+#include "utils.h"
 #include "intent_patterns.h"
-#include <math.h>
-#include <ctype.h>
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 #include <time.h>
 
-// Forward declarations for enhanced functions
-extern IntentType classify_intent_advanced(const char* user_input, ConversationContext* context, float* confidence);
-extern BotResponse* generate_enhanced_response(IntentType intent, const char* user_input, 
-                                             ConversationContext* context, const char* location, 
-                                             const char* query_details);
-extern int extract_locations(const char* user_input, char** state, char** district, char** block);
-extern ConversationContext* init_conversation_context(void);
-extern void update_conversation_context(ConversationContext* context, const char* user_input, 
-                                      IntentType intent, const char* location);
-extern void free_conversation_context(ConversationContext* context);
-extern void free_enhanced_bot_response(BotResponse* response);
+// Global chatbot state
+static struct {
+    bool initialized;
+    ConversationContext context;
+} chatbot = {0};
 
-// Global conversation context for session management
-static ConversationContext* global_context = NULL;
-
+// Initialize chatbot
 bool chatbot_init(void) {
-    // Initialize the database
+    if (chatbot.initialized) {
+        return true;
+    }
+    
+    printf("Initializing INGRES ChatBot...\n");
+    
+    // Initialize database
     if (!db_init()) {
-        print_error("Failed to initialize database!");
+        printf("Failed to initialize database\n");
         return false;
     }
     
-    // Initialize global conversation context
-    global_context = init_conversation_context();
-    if (!global_context) {
-        print_error("Failed to initialize conversation context!");
-        db_close();
-        return false;
-    }
+    // Initialize conversation context
+    memset(&chatbot.context, 0, sizeof(ConversationContext));
+    chatbot.context.session_start = time(NULL);
+    chatbot.initialized = true;
     
-    printf("[INIT] INGRES ChatBot initialized successfully!\n");
-    printf("[INIT] Enhanced intent system loaded with 70+ intent types\n");
-    printf("[INIT] Conversation context and fuzzy matching enabled\n");
-    printf("[INIT] Multi-language support ready\n");
-    
+    printf("ChatBot initialized successfully\n");
     return true;
 }
 
+// Cleanup chatbot
 void chatbot_cleanup(void) {
-    // Clean up conversation context
-    if (global_context) {
-        free_conversation_context(global_context);
-        global_context = NULL;
+    if (!chatbot.initialized) {
+        return;
     }
     
-    // Close the database
+    // Free context memory
+    if (chatbot.context.last_location) free(chatbot.context.last_location);
+    if (chatbot.context.last_state) free(chatbot.context.last_state);
+    if (chatbot.context.last_district) free(chatbot.context.last_district);
+    if (chatbot.context.pending_question) free(chatbot.context.pending_question);
+    
+    for (int i = 0; i < chatbot.context.history_count; i++) {
+        if (chatbot.context.conversation_history[i]) {
+            free(chatbot.context.conversation_history[i]);
+        }
+    }
+    
     db_close();
-    
-    printf("[CLEANUP] INGRES ChatBot cleanup completed\n");
+    chatbot.initialized = false;
+    printf("ChatBot cleanup completed\n");
 }
 
-// Legacy function for backward compatibility
+// Enhanced intent classification
 IntentType classify_intent(const char* user_input) {
-    float confidence;
-    return classify_intent_advanced(user_input, global_context, &confidence);
+    if (!user_input) return INTENT_UNKNOWN;
+    
+    char* lower_input = strdup(user_input);
+    for (char* p = lower_input; *p; ++p) *p = tolower(*p);
+    
+    // Remove leading/trailing whitespace
+    char* trimmed = lower_input;
+    while (*trimmed == ' ' || *trimmed == '\t' || *trimmed == '\n') trimmed++;
+    
+    // Enhanced keyword matching with better patterns
+    
+    // Critical areas - more comprehensive matching
+    if (strstr(trimmed, "critical") || strstr(trimmed, "danger") || 
+        strstr(trimmed, "problem") || strstr(trimmed, "over-exploit") ||
+        strstr(trimmed, "over exploited") || (strstr(trimmed, "areas") && 
+        (strstr(trimmed, "critical") || strstr(trimmed, "danger")))) {
+        free(lower_input);
+        return INTENT_CRITICAL_AREAS;
+    }
+    
+    // Safe areas
+    if (strstr(trimmed, "safe") || strstr(trimmed, "good") || 
+        strstr(trimmed, "sustainable") || strstr(trimmed, "secure")) {
+        free(lower_input);
+        return INTENT_SAFE_AREAS;
+    }
+    
+    // Statistics
+    if (strstr(trimmed, "statistics") || strstr(trimmed, "stats") || 
+        strstr(trimmed, "summary") || strstr(trimmed, "overview") ||
+        strstr(trimmed, "data count") || strstr(trimmed, "total")) {
+        free(lower_input);
+        return INTENT_SUMMARY_STATISTICS;
+    }
+    
+    // Location queries - more specific patterns
+    if (strstr(trimmed, "show me") || strstr(trimmed, "tell me") || 
+        strstr(trimmed, "what is") || strstr(trimmed, "data for") ||
+        strstr(trimmed, "groundwater in") || strstr(trimmed, "status of") ||
+        strstr(trimmed, "information about") || strstr(trimmed, "details about")) {
+        free(lower_input);
+        return INTENT_QUERY_LOCATION;
+    }
+    
+    // Greetings
+    if (strstr(trimmed, "hello") || strstr(trimmed, "hi") || 
+        strstr(trimmed, "hey") || strstr(trimmed, "namaste") ||
+        strstr(trimmed, "good morning") || strstr(trimmed, "good evening")) {
+        free(lower_input);
+        return INTENT_GREETING;
+    }
+    
+    // Help
+    if (strstr(trimmed, "help") || strstr(trimmed, "?") || 
+        strstr(trimmed, "how to") || strstr(trimmed, "what can") ||
+        strstr(trimmed, "guide")) {
+        free(lower_input);
+        return INTENT_HELP;
+    }
+    
+    // Goodbye
+    if (strstr(trimmed, "bye") || strstr(trimmed, "goodbye") || 
+        strstr(trimmed, "exit") || strstr(trimmed, "quit") ||
+        strstr(trimmed, "thanks") || strstr(trimmed, "thank you")) {
+        free(lower_input);
+        return INTENT_GOODBYE;
+    }
+    
+    // Check for state names directly
+    const char* states[] = {"punjab", "haryana", "gujarat", "maharashtra", "rajasthan", 
+                           "uttar pradesh", "tamil nadu", "karnataka", "telangana", 
+                           "andhra pradesh", "delhi", "mumbai", "bangalore", "chennai"};
+    
+    for (int i = 0; i < sizeof(states)/sizeof(states[0]); i++) {
+        if (strstr(trimmed, states[i])) {
+            free(lower_input);
+            return INTENT_QUERY_LOCATION;
+        }
+    }
+    
+    free(lower_input);
+    return INTENT_UNKNOWN;
 }
 
-// Enhanced main processing function
-BotResponse* process_user_query(const char* user_input) {
-    if (!user_input || strlen(user_input) == 0) {
-        BotResponse* error_response = malloc(sizeof(BotResponse));
-        if (error_response) {
-            error_response->message = strdup("Please provide a valid query.");
-            error_response->intent = INTENT_ERROR;
-            error_response->has_data = false;
-            error_response->confidence_score = 0.0;
-            error_response->suggestion_count = 0;
-        }
-        return error_response;
-    }
+// Extract location from user input
+static void extract_location(const char* user_input, char* state, char* district, char* block) {
+    if (!user_input) return;
     
-    clock_t start_time = clock();
+    char* lower_input = strdup(user_input);
+    for (char* p = lower_input; *p; ++p) *p = tolower(*p);
     
-    // Extract locations from user input
-    char* state = NULL;
-    char* district = NULL;
-    char* block = NULL;
-    int locations_found = extract_locations(user_input, &state, &district, &block);
+    // Common state names
+    const char* states[] = {"punjab", "haryana", "gujarat", "maharashtra", "rajasthan", 
+                           "uttar pradesh", "tamil nadu", "karnataka", "telangana", "andhra pradesh"};
     
-    // Classify intent with enhanced system
-    float confidence;
-    IntentType intent = classify_intent_advanced(user_input, global_context, &confidence);
-    
-    // Determine primary location for context
-    char* primary_location = NULL;
-    if (state) {
-        primary_location = strdup(state);
-    } else if (district) {
-        primary_location = strdup(district);
-    } else if (global_context && global_context->last_location) {
-        primary_location = strdup(global_context->last_location);
-    }
-    
-    // Generate enhanced response
-    BotResponse* response = generate_enhanced_response(intent, user_input, global_context, 
-                                                     primary_location, user_input);
-    
-    if (response) {
-        // Update confidence score
-        response->confidence_score = confidence;
-        
-        // Calculate processing time
-        clock_t end_time = clock();
-        response->processing_time_ms = ((double)(end_time - start_time) / CLOCKS_PER_SEC) * 1000.0;
-        
-        // Update conversation context
-        update_conversation_context(global_context, user_input, intent, primary_location);
-        
-        // Add clarification if confidence is low
-        if (confidence < 0.5) {
-            response->requires_clarification = true;
-            response->clarification_question = strdup(
-                "I'm not entirely sure I understood your query correctly. "
-                "Could you please rephrase or provide more specific details?"
-            );
+    // Look for state names
+    for (int i = 0; i < sizeof(states)/sizeof(states[0]); i++) {
+        if (strstr(lower_input, states[i])) {
+            strcpy(state, states[i]);
+            // Capitalize first letter
+            state[0] = toupper(state[0]);
+            break;
         }
     }
     
-    // Clean up extracted locations
-    if (state) free(state);
-    if (district) free(district);
-    if (block) free(block);
-    if (primary_location) free(primary_location);
-    
-    return response;
-}
-// Simplified process_user_input for testing
-BotResponse* process_user_input(const char* user_input) {
-    BotResponse* response = malloc(sizeof(BotResponse));
-    if (!response) return NULL;
-    
-    IntentType intent = classify_intent(user_input);
-    response->intent = intent;
-    response->message = generate_response(intent, "TestLocation", user_input);
-    response->query_result = NULL;
-    response->has_data = false;
-    response->processing_time_ms = 0.0f;
-    
-    return response;
+    free(lower_input);
 }
 
+// Generate response based on intent
 char* generate_response(IntentType intent, const char* location, const char* query_details) {
     char* response = malloc(MAX_RESPONSE_LENGTH);
     if (!response) return NULL;
@@ -157,244 +178,190 @@ char* generate_response(IntentType intent, const char* location, const char* que
     switch (intent) {
         case INTENT_GREETING:
             snprintf(response, MAX_RESPONSE_LENGTH, 
-                "Namaste! I'm your INGRES groundwater assistant. I can help you with:\n"
-                "* Groundwater data for any location\n"
-                "* Critical and over-exploited areas\n"
-                "* Historical trends and comparisons\n"
-                "* Policy recommendations\n\n"
-                "Try asking: 'Show me Punjab groundwater data' or 'Which areas are critical?'");
-            break;
-            
-        case INTENT_GOODBYE:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "Thank you for using INGRES ChatBot! Stay informed about groundwater resources.");
+                    "Hello! I'm INGRES, your Groundwater Assessment assistant. I can help you with:\n"
+                    "• Groundwater data for any location\n"
+                    "• Critical and safe areas identification\n"
+                    "• Water resource analysis\n"
+                    "• Conservation recommendations\n\n"
+                    "Try asking: 'Show me Punjab data' or 'Which areas are critical?'");
             break;
             
         case INTENT_HELP:
             snprintf(response, MAX_RESPONSE_LENGTH,
-                "INGRES ChatBot Help:\n\n"
-                "[LOC] Location Queries: 'Show me [state/district] data'\n"
-                "[CRIT] Critical Areas: 'Show critical areas' or 'Over-exploited regions'\n"
-                "[COMP] Comparisons: 'Compare Punjab and Haryana'\n"
-                "[TREND] Trends: 'Historical trend for Maharashtra'\n"
-                "[CRISIS] Water Crisis: 'Areas facing water shortage'\n"
-                "[RAIN] Rainfall Impact: 'How does rainfall affect groundwater?'\n"
-                "[POLICY] Policy Help: 'Policy suggestions for [location]'\n\n"
-                "Example: 'What is the groundwater status of Amritsar?'");
+                    "I can help you with groundwater assessment data. Here are some examples:\n\n"
+                    "📍 Location queries:\n"
+                    "• 'Show me Punjab groundwater data'\n"
+                    "• 'Data for Amritsar district'\n"
+                    "• 'Groundwater status in Gujarat'\n\n"
+                    "🔍 Category queries:\n"
+                    "• 'Which areas are critical?'\n"
+                    "• 'Show safe groundwater zones'\n"
+                    "• 'Over-exploited regions'\n\n"
+                    "📊 Analysis:\n"
+                    "• 'Compare Punjab and Haryana'\n"
+                    "• 'Database statistics'");
             break;
             
         case INTENT_QUERY_LOCATION:
-            if (location && strlen(location) > 0) {
-                // This will be enhanced when we connect to actual database
-                snprintf(response, MAX_RESPONSE_LENGTH,
-                    "[SEARCH] Searching groundwater data for %s...\n\n"
-                    "Based on latest CGWB assessment:\n"
-                    "* Location: %s\n"
-                    "* Assessment Year: 2023\n"
-                    "* Status: [Fetching from database...]\n"
-                    "* Stage of Extraction: [Calculating...]\n\n"
-                    "Note: Connecting to INGRES database for real-time data...", 
-                    location, location);
-            } else {
-                snprintf(response, MAX_RESPONSE_LENGTH,
-                    "Please specify a location. Example:\n"
-                    "* 'Show me Punjab groundwater data'\n"
-                    "* 'Groundwater status of Amritsar'\n"
-                    "* 'Data for Maharashtra'");
+            {
+                char state[50] = "";
+                extract_location(location ? location : "", state, NULL, NULL);
+                
+                if (strlen(state) > 0) {
+                    QueryResult* result = query_by_state(state);
+                    if (result && result->count > 0) {
+                        int safe = 0, critical = 0, over_exploited = 0;
+                        for (int i = 0; i < result->count; i++) {
+                            if (strcasecmp(result->data[i].category, "Safe") == 0) safe++;
+                            else if (strcasecmp(result->data[i].category, "Critical") == 0) critical++;
+                            else if (strcasecmp(result->data[i].category, "Over-Exploited") == 0) over_exploited++;
+                        }
+                        
+                        snprintf(response, MAX_RESPONSE_LENGTH,
+                                "📊 Groundwater Assessment for **%s**\n\n"
+                                "Total districts analyzed: **%d**\n"
+                                "✅ Safe areas: **%d**\n"
+                                "⚠️ Critical areas: **%d**\n"
+                                "🔴 Over-exploited areas: **%d**\n\n"
+                                "💡 Data source: Central Ground Water Board (CGWB)\n"
+                                "📅 Assessment year: 2024",
+                                state, result->count, safe, critical, over_exploited);
+                        free_query_result(result);
+                    } else {
+                        snprintf(response, MAX_RESPONSE_LENGTH,
+                                "I couldn't find data for **%s**. Please check the spelling or try a different state.\n\n"
+                                "Available states include: Punjab, Haryana, Gujarat, Maharashtra, Rajasthan, Tamil Nadu, Karnataka, Telangana",
+                                state);
+                    }
+                } else {
+                    snprintf(response, MAX_RESPONSE_LENGTH,
+                            "Please specify a state or district. For example:\n"
+                            "• 'Show me Punjab data'\n"
+                            "• 'Groundwater status in Maharashtra'");
+                }
             }
             break;
             
         case INTENT_CRITICAL_AREAS:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "[ALERT] CRITICAL GROUNDWATER AREAS (Latest Assessment):\n\n"
-                "[OVER-EXPLOITED] (>100%% extraction):\n"
-                "* Punjab: Amritsar, Ludhiana, Bathinda\n"
-                "* Haryana: Sirsa, Hisar\n"
-                "* Gujarat: Ahmedabad City\n"
-                "* Tamil Nadu: Chennai\n\n"
-                "[CRITICAL] (90-100%% extraction):\n"
-                "* Maharashtra: Pune, Aurangabad\n"
-                "* Karnataka: Bangalore Urban\n"
-                "* Rajasthan: Alwar\n\n"
-                "NOTE: These areas need immediate water conservation measures!");
-            break;
-            
-        case INTENT_QUERY_CATEGORY:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "[CATEGORY] GROUNDWATER CLASSIFICATION SYSTEM:\n\n"
-                "CGWB CATEGORIES (Based on Stage of Extraction):\n\n"
-                "[SAFE] <70%% extraction:\n"
-                "* Sustainable groundwater usage\n"
-                "* No restrictions on new bore wells\n"
-                "* Examples: Jaipur, Mysore, Kolkata\n\n"
-                "[SEMI-CRITICAL] 70-90%% extraction:\n"
-                "* Moderate stress on groundwater\n"
-                "* Regulated development needed\n"
-                "* Examples: Kurukshetra, Nashik, Coimbatore\n\n"
-                "[CRITICAL] 90-100%% extraction:\n"
-                "* High stress, immediate action needed\n"
-                "* Strict regulations required\n"
-                "* Examples: Pune, Bangalore, Alwar\n\n"
-                "[OVER-EXPLOITED] >100%% extraction:\n"
-                "* Groundwater mining occurring\n"
-                "* Ban on new extractions\n"
-                "* Examples: Amritsar, Ludhiana, Chennai");
-            break;
-            
-        case INTENT_SAFE_AREAS:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "[SAFE] SAFE GROUNDWATER AREAS (<70%% extraction):\n\n"
-                "[SAFE REGIONS]:\n"
-                "* Rajasthan: Jaipur, Bikaner\n"
-                "* Gujarat: Vadodara\n"
-                "* Maharashtra: Mumbai Suburban\n"
-                "* Tamil Nadu: Madurai\n"
-                "* Karnataka: Mysore\n"
-                "* West Bengal: Kolkata, Howrah\n"
-                "* Andhra Pradesh: Visakhapatnam\n\n"
-                "NOTE: These areas have sustainable groundwater usage patterns.");
-            break;
-            
-        case INTENT_WATER_CRISIS:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "[CRISIS] WATER CRISIS ALERT AREAS:\n\n"
-                "IMMEDIATE ATTENTION NEEDED:\n"
-                "* Punjab (Central): 78%% blocks over-exploited\n"
-                "* Haryana (Southwest): Rapid depletion rate\n"
-                "* Tamil Nadu (Chennai): Urban water stress\n"
-                "* Karnataka (Bangalore): IT sector impact\n\n"
-                "CRISIS INDICATORS:\n"
-                "* Declining water table: 0.5-2m annually\n"
-                "* Industrial over-extraction\n"
-                "* Intensive agriculture in arid regions\n\n"
-                "URGENT ACTIONS: Rainwater harvesting, drip irrigation, policy enforcement");
-            break;
-            
-        case INTENT_RAINFALL_CORRELATION:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "[RAINFALL] RAINFALL-GROUNDWATER CORRELATION:\n\n"
-                "MONSOON IMPACT:\n"
-                "* Good Monsoon (>110%% normal): +15-25%% recharge\n"
-                "* Normal Monsoon (90-110%%): Stable recharge\n"
-                "* Poor Monsoon (<90%%): -20-40%% recharge\n\n"
-                "REGIONAL PATTERNS:\n"
-                "* Western Ghats: High recharge efficiency (60-80%%)\n"
-                "* Gangetic Plains: Moderate efficiency (40-60%%)\n"
-                "* Arid Regions: Low efficiency (10-30%%)\n\n"
-                "NOTE: Climate change is affecting traditional recharge patterns!");
-            break;
-            
-        case INTENT_POLICY_SUGGESTION:
-            if (location && strlen(location) > 0) {
-                snprintf(response, MAX_RESPONSE_LENGTH,
-                    "[POLICY] POLICY RECOMMENDATIONS FOR %s:\n\n"
-                    "IMMEDIATE MEASURES:\n"
-                    "* Mandatory rainwater harvesting for buildings >300 sq.m\n"
-                    "* Groundwater extraction permits with annual limits\n"
-                    "* Subsidies for drip irrigation systems\n\n"
-                    "MEDIUM-TERM STRATEGIES:\n"
-                    "* Crop diversification from water-intensive crops\n"
-                    "* Industrial water recycling mandates\n"
-                    "* Community-based water management\n\n"
-                    "MONITORING:\n"
-                    "* Real-time groundwater level monitoring\n"
-                    "* Annual assessment updates\n"
-                    "* Public awareness campaigns", location);
-            } else {
-                snprintf(response, MAX_RESPONSE_LENGTH,
-                    "[POLICY] GENERAL GROUNDWATER POLICY FRAMEWORK:\n\n"
-                    "NATIONAL LEVEL:\n"
-                    "* National Water Policy implementation\n"
-                    "* CGWB guidelines enforcement\n"
-                    "* Inter-state water sharing agreements\n\n"
-                    "STATE LEVEL:\n"
-                    "* Groundwater regulation acts\n"
-                    "* Water conservation incentives\n"
-                    "* Agricultural policy reforms\n\n"
-                    "Specify a location for targeted recommendations!");
+            {
+                QueryResult* result = query_critical_areas();
+                if (result && result->count > 0) {
+                    snprintf(response, MAX_RESPONSE_LENGTH,
+                            "🚨 **Critical & Over-Exploited Areas**\n\n"
+                            "Found **%d** critical/over-exploited areas:\n\n",
+                            result->count);
+                    
+                    int added = 0;
+                    for (int i = 0; i < result->count && i < 5; i++) {
+                        char line[200];
+                        snprintf(line, sizeof(line), "• **%s, %s** - %s\n",
+                                result->data[i].district, result->data[i].state, result->data[i].category);
+                        strncat(response, line, MAX_RESPONSE_LENGTH - strlen(response) - 1);
+                        added++;
+                    }
+                    
+                    if (result->count > 5) {
+                        strncat(response, "\n... and more. Use specific queries for detailed analysis.",
+                               MAX_RESPONSE_LENGTH - strlen(response) - 1);
+                    }
+                    free_query_result(result);
+                } else {
+                    snprintf(response, MAX_RESPONSE_LENGTH,
+                            "No critical areas found in the database.");
+                }
             }
             break;
             
-        case INTENT_COMPARE_LOCATIONS:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "[COMPARE] GROUNDWATER COMPARISON:\n\n"
-                "PUNJAB vs HARYANA (Example Comparison):\n\n"
-                "PUNJAB:\n"
-                "* Over-exploited: 78%% of blocks\n"
-                "* Stage of Extraction: >150%% in many areas\n"
-                "* Main Issue: Intensive rice-wheat cultivation\n"
-                "* Water Table: Declining 0.5-1m annually\n\n"
-                "HARYANA:\n"
-                "* Over-exploited: 45%% of blocks\n"
-                "* Stage of Extraction: 90-120%% in critical areas\n"
-                "* Main Issue: Industrial + agricultural demand\n"
-                "* Water Table: Mixed trends by region\n\n"
-                "RECOMMENDATION: Both states need urgent water conservation measures.\n"
-                "Specify exact locations for detailed comparison.");
+        case INTENT_SAFE_AREAS:
+            {
+                QueryResult* result = query_by_category("Safe");
+                if (result && result->count > 0) {
+                    snprintf(response, MAX_RESPONSE_LENGTH,
+                            "✅ **Safe Groundwater Zones**\n\n"
+                            "Found **%d** safe groundwater areas:\n\n",
+                            result->count);
+                    
+                    int added = 0;
+                    for (int i = 0; i < result->count && i < 5; i++) {
+                        char line[200];
+                        snprintf(line, sizeof(line), "• **%s, %s**\n",
+                                result->data[i].district, result->data[i].state);
+                        strncat(response, line, MAX_RESPONSE_LENGTH - strlen(response) - 1);
+                        added++;
+                    }
+                    free_query_result(result);
+                } else {
+                    snprintf(response, MAX_RESPONSE_LENGTH,
+                            "No safe areas found in the database.");
+                }
+            }
             break;
             
-        case INTENT_HISTORICAL_TREND:
-            snprintf(response, MAX_RESPONSE_LENGTH,
-                "[TREND] HISTORICAL GROUNDWATER TRENDS:\n\n"
-                "NATIONAL TRENDS (2017-2023):\n\n"
-                "DECLINING AREAS:\n"
-                "* Punjab: Water table dropped 2-3m\n"
-                "* Haryana: 15%% increase in over-exploited blocks\n"
-                "* Tamil Nadu: Chennai crisis worsened\n"
-                "* Karnataka: Bangalore stress increased\n\n"
-                "IMPROVING AREAS:\n"
-                "* Rajasthan: Better monsoon management\n"
-                "* Gujarat: Successful water conservation\n"
-                "* Maharashtra: Watershed programs effective\n\n"
-                "KEY FACTORS:\n"
-                "* Climate change impact\n"
-                "* Policy interventions\n"
-                "* Agricultural practices\n\n"
-                "Specify a location for detailed trend analysis.");
+        case INTENT_SUMMARY_STATISTICS:
+            {
+                snprintf(response, MAX_RESPONSE_LENGTH,
+                        "📊 **Database Statistics**\n\n"
+                        "Total Records: **%d**\n\n"
+                        "Check console for detailed breakdown of:\n"
+                        "• Safe, Critical, and Over-Exploited areas\n"
+                        "• State-wise distribution\n"
+                        "• Assessment year coverage\n\n"
+                        "Use specific queries for detailed location analysis!",
+                        sample_data_count);
+            }
             break;
             
-        case INTENT_STATUS:
+        case INTENT_GOODBYE:
             snprintf(response, MAX_RESPONSE_LENGTH,
-                "[STATUS] INGRES CHATBOT STATUS:\n\n"
-                "[OK] System: Online and operational\n"
-                "[OK] Database: Connected to sample data\n"
-                "[OK] Coverage: Pan-India groundwater data\n"
-                "[OK] Languages: English (Hindi support coming soon)\n"
-                "[OK] Last Update: 2023 CGWB Assessment\n\n"
-                "CAPABILITIES:\n"
-                "* 6000+ assessment units covered\n"
-                "* Real-time query processing\n"
-                "* Historical trend analysis\n"
-                "* Policy recommendation engine");
+                    "Thank you for using INGRES! Stay informed about groundwater conservation.\n\n"
+                    "💧 Remember: Every drop counts!");
             break;
             
-        case INTENT_UNKNOWN:
         default:
             snprintf(response, MAX_RESPONSE_LENGTH,
-                "[HELP] I didn't quite understand that. I can help with:\n\n"
-                "* 'Show me [location] groundwater data'\n"
-                "* 'Which areas are critical?'\n"
-                "* 'Compare [state1] and [state2]'\n"
-                "* 'Policy suggestions for [location]'\n"
-                "* 'Areas facing water crisis'\n\n"
-                "Try rephrasing your question or type 'help' for more options.");
+                    "I'm not sure how to help with that. Try asking:\n"
+                    "• 'Show me data for [state/district]'\n"
+                    "• 'Which areas are critical?'\n"
+                    "• 'Help' for more options");
             break;
     }
     
     return response;
 }
 
+// Process user input and return response
+BotResponse* process_user_query(const char* user_input) {
+    if (!user_input || strlen(user_input) == 0) {
+        BotResponse* response = calloc(1, sizeof(BotResponse));
+        response->message = strdup("Please enter a valid query.");
+        response->intent = INTENT_UNKNOWN;
+        response->confidence_score = 1.0f;
+        return response;
+    }
+    
+    // Classify intent
+    IntentType intent = classify_intent(user_input);
+    
+    // Generate response
+    char* message = generate_response(intent, user_input, NULL);
+    
+    // Create response structure
+    BotResponse* response = calloc(1, sizeof(BotResponse));
+    if (response) {
+        response->message = message;
+        response->intent = intent;
+        response->confidence_score = 0.8f; // Default confidence
+        response->has_data = false;
+    }
+    
+    return response;
+}
 
+// Free response memory
 void free_bot_response(BotResponse* response) {
-    if (!response) return;
-    
-    if (response->message) {
-        free(response->message);
+    if (response) {
+        if (response->message) free(response->message);
+        if (response->query_result) free_query_result(response->query_result);
+        free(response);
     }
-    
-    if (response->query_result) {
-        free_query_result(response->query_result);
-    }
-    
-    free(response);
 }

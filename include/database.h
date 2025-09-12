@@ -2,7 +2,11 @@
 #define DATABASE_H
 
 #include <stdbool.h>
+
+// Only include PostgreSQL headers if building with real database support
+#ifdef USE_POSTGRESQL
 #include <libpq-fe.h>
+#endif
 
 // Groundwater assessment data structure based on CGWB format
 typedef struct {
@@ -42,6 +46,9 @@ GroundwaterData* get_critical_areas(int* count);
 
 // Memory management
 void free_query_result(QueryResult* result);
+
+// Statistics and analysis
+void print_database_stats(void);
 
 // Sample data access
 extern GroundwaterData sample_data[];

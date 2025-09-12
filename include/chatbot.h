@@ -2,6 +2,7 @@
 #define CHATBOT_H
 
 #include <stdbool.h>
+#include <time.h>
 #include "utils.h"
 #include "database.h"
 
@@ -301,5 +302,12 @@ void update_conversation_context(ConversationContext* context, const char* user_
  * @param context Conversation context to free.
  */
 void free_conversation_context(ConversationContext* context);
+
+/**
+ * @brief Enhanced free function for new response structure
+ *
+ * @param response Enhanced BotResponse to free.
+ */
+void free_enhanced_bot_response(BotResponse* response);
 
 #endif // CHATBOT_H

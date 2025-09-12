@@ -1,179 +1,232 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
+#include <ctype.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "chatbot.h"
-#include "utils.h"
 
-// Enhanced test queries showcasing new capabilities
-const char* enhanced_test_queries[] = {
-    // Basic interaction
-    "Hello INGRES",
-    "Help me understand groundwater",
-    
-    // Location queries with fuzzy matching
-    "Show me Panjab data",  // Misspelled Punjab
-    "Groundwater in Maharashtr",  // Misspelled Maharashtra
-    "Tell me about Amritsar district",
-    
-    // Advanced analysis
-    "Compare Punjab vs Haryana groundwater trends",
-    "Historical trend for Gujarat over 5 years",
-    "Which areas need emergency intervention?",
-    
-    // Technical queries
-    "Explain stage of extraction methodology",
-    "What conservation methods work best?",
-    "Policy recommendations for over-exploited areas",
-    
-    // Environmental factors
-    "How does monsoon affect groundwater recharge?",
-    "Climate change impact on water resources",
-    
-    // Context-aware follow-ups (to be tested in sequence)
-    "Tell me more about that",
-    "What are the economic impacts?",
-    "Show me success stories",
-    
-    // Complex queries
-    "Show critical areas in northern India with policy recommendations",
-    "Agriculture impact on groundwater in Punjab",
-    
-    "Goodbye"
-};
+// Forward declaration of helper function
+const char* get_intent_name(IntentType intent);
 
-void print_response_details(BotResponse* response) {
-    if (!response) return;
-    
-    printf("🤖 **INGRES RESPONSE**\n");
-    printf("Intent: %d | Confidence: %.2f | Time: %.2fms\n", 
-           response->intent, response->confidence_score, response->processing_time_ms);
-    
-    if (response->requires_clarification) {
-        printf("⚠️  CLARIFICATION NEEDED: %s\n", response->clarification_question);
+// Global chatbot state
+static bool chatbot_initialized = false;
+
+// Signal handler for graceful shutdown
+void handle_signal(int signal) {
+    printf("\n\n[Signal] Received signal %d, shutting down gracefully...\n", signal);
+    if (chatbot_initialized) {
+        chatbot_cleanup();
+        chatbot_initialized = false;
     }
-    
-    printf("\n%s\n", response->message);
-    
-    if (response->suggestion_count > 0) {
-        printf("\n💡 **SUGGESTED FOLLOW-UPS**:\n");
-        for (int i = 0; i < response->suggestion_count; i++) {
-            printf("   %d. %s\n", i+1, response->suggested_actions[i]);
-        }
-    }
-    
-    if (response->source_count > 0) {
-        printf("\n📚 **DATA SOURCES**: ");
-        for (int i = 0; i < response->source_count; i++) {
-            printf("%s", response->data_sources[i]);
-            if (i < response->source_count - 1) printf(", ");
-        }
-        printf("\n");
-    }
+    exit(0);
 }
 
-int main() {
-    printf("🌊 *** INGRES ChatBot - Enhanced AI System *** 🌊\n");
-    printf("================================================\n");
-    printf("India's Groundwater Resource Expert System\n");
-    printf("Smart India Hackathon 2025 | Enhanced Version\n\n");
+// Print welcome message
+void print_welcome(void) {
+    printf("\n");
+    printf("╔══════════════════════════════════════════════════════════════╗\n");
+    printf("║                    INGRES CHATBOT v1.0                     ║\n");
+    printf("║                                                              ║\n");
+    printf("║  Your AI-powered Groundwater Data Assistant                  ║\n");
+    printf("║  Loaded with real groundwater data for India                 ║\n");
+    printf("║                                                              ║\n");
+    printf("╚══════════════════════════════════════════════════════════════╝\n\n");
     
-    // Initialize enhanced chatbot
-    if (!chatbot_init()) {
-        printf("❌ Failed to initialize INGRES ChatBot!\n");
-        return 1;
-    }
+    printf("💡 Try asking me:\n");
+    printf("   • \"Show me Punjab data\"\n");
+    printf("   • \"Which areas are critical?\"\n");
+    printf("   • \"Tell me about safe groundwater areas\"\n");
+    printf("   • \"Show me statistics\"\n");
+    printf("   • \"Help\" for more options\n\n");
+}
+
+// Main interactive loop
+void run_interactive_mode(void) {
+    char input[512];
     
-    printf("\n🚀 **ENHANCED FEATURES LOADED**:\n");
-    printf("   ✅ 70+ Intent Types with Fuzzy Matching\n");
-    printf("   ✅ Context-Aware Conversations\n");
-    printf("   ✅ Multi-language Support Framework\n");
-    printf("   ✅ Advanced Location Extraction\n");
-    printf("   ✅ Confidence Scoring & Clarifications\n");
-    printf("   ✅ Follow-up Suggestions\n");
-    printf("   ✅ Comprehensive Response Templates\n\n");
-    
-    // Test enhanced queries
-    printf("*** TESTING ENHANCED CAPABILITIES ***\n");
-    printf("====================================\n\n");
-    
-    int num_tests = sizeof(enhanced_test_queries) / sizeof(enhanced_test_queries[0]);
-    
-    for (int i = 0; i < num_tests; i++) {
-        printf("👤 USER: %s\n", enhanced_test_queries[i]);
-        
-        // Use enhanced processing
-        BotResponse* response = process_user_query(enhanced_test_queries[i]);
-        
-        if (response) {
-            print_response_details(response);
-            free_enhanced_bot_response(response);
-        } else {
-            printf("🤖 BOT: Error processing request\n");
-        }
-        
-        printf("\n" "═══════════════════════════════════════════════════════════════\n\n");
-        
-        // Add small delay for readability
-        #ifdef _WIN32
-            system("timeout /t 1 >nul");
-        #else
-            system("sleep 1");
-        #endif
-    }
-    
-    // Interactive enhanced mode
-    printf("*** ENHANCED INTERACTIVE MODE ***\n");
-    printf("================================\n");
-    printf("🎯 Features: Context awareness, fuzzy matching, follow-up suggestions\n");
-    printf("💬 Try: 'Show Punjab crisis', then 'tell me more', then 'what solutions?'\n");
-    printf("🔤 Test: Misspellings like 'Panjab' or 'Maharashtr'\n");
-    printf("❓ Type 'quit' to exit\n\n");
-    
-    char input[MAX_INPUT_LENGTH];
-    int query_number = 1;
+    printf("🤖 ChatBot is ready! Type 'exit' to quit.\n\n");
     
     while (1) {
-        printf("👤 [Q%d]: ", query_number++);
+        printf("You: ");
         fflush(stdout);
         
-        if (!fgets(input, sizeof(input), stdin)) {
+        if (fgets(input, sizeof(input), stdin) == NULL) {
             break;
         }
         
         // Remove newline
-        input[strcspn(input, "\n")] = 0;
+        input[strcspn(input, "\n")] = '\0';
         
-        if (strcmp(input, "quit") == 0 || strcmp(input, "exit") == 0 || strcmp(input, "bye") == 0) {
-            BotResponse* goodbye_response = process_user_query("goodbye");
-            if (goodbye_response) {
-                print_response_details(goodbye_response);
-                free_enhanced_bot_response(goodbye_response);
-            }
+        // Check for exit
+        if (strcasecmp(input, "exit") == 0 || 
+            strcasecmp(input, "quit") == 0 || 
+            strcasecmp(input, "bye") == 0) {
+            printf("\n👋 Goodbye! Thank you for using INGRES ChatBot.\n");
             break;
         }
         
-        if (strlen(input) == 0) {
-            printf("🤖 Please enter a query or 'quit' to exit.\n\n");
-            continue;
-        }
-        
-        // Process with enhanced system
+        // Process input
         BotResponse* response = process_user_query(input);
-        
         if (response) {
-            print_response_details(response);
-            free_enhanced_bot_response(response);
+            printf("\n🤖 Bot: %s\n\n", response->message);
+            
+            // Show confidence if low
+            if (response->confidence_score < 0.7f && response->confidence_score > 0.1f) {
+                printf("   (Confidence: %.0f%%)\n", response->confidence_score * 100);
+            }
+            
+            free_bot_response(response);
         } else {
-            printf("🤖 Sorry, I encountered an error processing your request.\n");
+            printf("\n❌ Error: Failed to process your query.\n\n");
+        }
+    }
+}
+
+// Run single query mode
+void run_single_query_mode(const char* query) {
+    printf("Processing query: %s\n\n", query);
+    
+    BotResponse* response = process_user_query(query);
+    if (response) {
+        printf("Response: %s\n", response->message);
+        printf("Intent: %s\n", get_intent_name(response->intent));
+        printf("Confidence: %.2f\n", response->confidence_score);
+        
+        if (response->has_data) {
+            printf("\nData found in response\n");
         }
         
-        printf("\n");
+        free_bot_response(response);
+    } else {
+        printf("Error: Failed to process query\n");
+    }
+}
+
+// Helper function to get intent name
+const char* get_intent_name(IntentType intent) {
+    switch (intent) {
+        case INTENT_GREETING: return "Greeting";
+        case INTENT_HELP: return "Help";
+        case INTENT_QUERY_LOCATION: return "Query Location";
+        case INTENT_CRITICAL_AREAS: return "Critical Areas";
+        case INTENT_SAFE_AREAS: return "Safe Areas";
+        case INTENT_SUMMARY_STATISTICS: return "Statistics";
+        case INTENT_GOODBYE: return "Goodbye";
+        default: return "Unknown";
+    }
+}
+
+// Test mode with sample queries
+void run_test_mode(void) {
+    const char* test_queries[] = {
+        "Hello",
+        "Show me Punjab data",
+        "Which areas are critical?",
+        "Tell me about safe areas",
+        "Show me statistics",
+        "Help",
+        "Ludhiana district",
+        "Delhi groundwater",
+        "Critical areas in Maharashtra",
+        "What is the data for Rajasthan?"
+    };
+    
+    int num_tests = sizeof(test_queries) / sizeof(test_queries[0]);
+    
+    printf("🧪 Running %d test queries...\n\n", num_tests);
+    
+    for (int i = 0; i < num_tests; i++) {
+        printf("Test %d: %s\n", i + 1, test_queries[i]);
+        printf("--------------------------------------------------\n");
+        
+        BotResponse* response = process_user_query(test_queries[i]);
+        if (response) {
+            printf("Response: %s\n", response->message);
+            printf("Intent: %s (%.0f%% confidence)\n\n", 
+                   get_intent_name(response->intent), response->confidence_score * 100);
+            free_bot_response(response);
+        }
+        
+        // Small delay for readability
+        #ifdef _WIN32
+        Sleep(1000);
+        #else
+        usleep(500000);
+        #endif
+    }
+    
+    printf("✅ All tests completed!\n");
+}
+
+// Print usage
+void print_usage(const char* program_name) {
+    printf("Usage: %s [OPTIONS]\n\n", program_name);
+    printf("OPTIONS:\n");
+    printf("  --help, -h        Show this help message\n");
+    printf("  --query <text>    Run single query and exit\n");
+    printf("  --test            Run test mode with sample queries\n");
+    printf("  --interactive     Run in interactive mode (default)\n");
+    printf("\n");
+    printf("Examples:\n");
+    printf("  %s --query \"Show me Punjab data\"\n", program_name);
+    printf("  %s --test\n", program_name);
+    printf("  %s\n", program_name);
+}
+
+int main(int argc, char* argv[]) {
+    // Set up signal handlers
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
+    
+    // Parse command line arguments
+    int run_test = 0;
+    int run_single = 0;
+    char single_query[512] = {0};
+    
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else if (strcmp(argv[i], "--test") == 0) {
+            run_test = 1;
+        } else if (strcmp(argv[i], "--query") == 0 && i + 1 < argc) {
+            run_single = 1;
+            strncpy(single_query, argv[i + 1], sizeof(single_query) - 1);
+            break;
+        } else if (strcmp(argv[i], "--interactive") == 0) {
+            // Default mode, do nothing
+        }
+    }
+    
+    // Initialize chatbot
+    if (!chatbot_init()) {
+        fprintf(stderr, "❌ Failed to initialize chatbot\n");
+        return 1;
+    }
+    chatbot_initialized = true;
+    
+    printf("✅ ChatBot initialized successfully!\n");
+    
+    // Run in appropriate mode
+    if (run_test) {
+        run_test_mode();
+    } else if (run_single) {
+        run_single_query_mode(single_query);
+    } else {
+        print_welcome();
+        run_interactive_mode();
     }
     
     // Cleanup
     chatbot_cleanup();
-    printf("\n🎉 Thank you for testing INGRES ChatBot Enhanced System!\n");
-    printf("💡 Ready for Smart India Hackathon 2025!\n");
+    chatbot_initialized = false;
     
     return 0;
 }

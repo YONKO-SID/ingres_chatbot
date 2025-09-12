@@ -15,6 +15,7 @@ add_executable(ingres_chatbot
         src/enhanced_intent_patterns.c
         src/enhanced_response_generator.c
         lib/mongoose.c
+        include/enhanced_intent_patterns.h
 )
 
 # Link any necessary libraries (e.g., for GLib if you use it, or math library)

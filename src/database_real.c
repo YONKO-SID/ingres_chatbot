@@ -1,380 +1,198 @@
-/*
- * INGRES ChatBot - Real PostgreSQL Database Integration
- * Replaces the sample data with actual database connections
- */
-
 #include "database.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libpq-fe.h>
+#include <time.h>
 
-// Global database connection
-static PGconn *db_conn = NULL;
+// Include the sample data
+#include "../data/sample_groundwater.c"
 
-// Database configuration
-typedef struct {
-    char host[256];
-    char dbname[256];
-    char user[256];
-    char password[256];
-    char port[16];
-} DatabaseConfig;
+// Global database structure
+static struct {
+    GroundwaterData* records;
+    int record_count;
+    bool initialized;
+} db = {0};
 
-static DatabaseConfig db_config = {
-    .host = "localhost",
-    .dbname = "ingres_groundwater",
-    .user = "ingres_user",
-    .password = "ingres_password",
-    .port = "5432"
-};
-
-// Load configuration from environment or config file
-static void load_db_config(void) {
-    char *env_val;
-    
-    if ((env_val = getenv("DB_HOST")) != NULL) {
-        strncpy(db_config.host, env_val, sizeof(db_config.host) - 1);
-    }
-    
-    if ((env_val = getenv("DB_NAME")) != NULL) {
-        strncpy(db_config.dbname, env_val, sizeof(db_config.dbname) - 1);
-    }
-    
-    if ((env_val = getenv("DB_USER")) != NULL) {
-        strncpy(db_config.user, env_val, sizeof(db_config.user) - 1);
-    }
-    
-    if ((env_val = getenv("DB_PASSWORD")) != NULL) {
-        strncpy(db_config.password, env_val, sizeof(db_config.password) - 1);
-    }
-    
-    if ((env_val = getenv("DB_PORT")) != NULL) {
-        strncpy(db_config.port, env_val, sizeof(db_config.port) - 1);
-    }
-}
-
-// Initialize database connection
+// Initialize database with sample data
 bool db_init(void) {
-    load_db_config();
-    
-    // Build connection string
-    char conninfo[1024];
-    snprintf(conninfo, sizeof(conninfo),
-             "host=%s dbname=%s user=%s password=%s port=%s",
-             db_config.host, db_config.dbname, db_config.user, 
-             db_config.password, db_config.port);
-    
-    // Connect to database
-    db_conn = PQconnectdb(conninfo);
-    
-    if (PQstatus(db_conn) != CONNECTION_OK) {
-        fprintf(stderr, "[DB ERROR] Connection failed: %s\n", PQerrorMessage(db_conn));
-        PQfinish(db_conn);
-        db_conn = NULL;
-        return false;
+    if (db.initialized) {
+        return true;
     }
     
-    printf("[DB] Connected to PostgreSQL database: %s\n", db_config.dbname);
+    printf("Initializing database with sample groundwater data...\n");
     
-    // Test the connection with a simple query
-    PGresult *res = PQexec(db_conn, "SELECT COUNT(*) FROM groundwater_data;");
+    // Use the sample data from the included file
+    db.records = sample_data;
+    db.record_count = sizeof(sample_data) / sizeof(sample_data[0]);
+    db.initialized = true;
     
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        fprintf(stderr, "[DB ERROR] Test query failed: %s\n", PQerrorMessage(db_conn));
-        PQclear(res);
-        return false;
-    }
-    
-    int record_count = atoi(PQgetvalue(res, 0, 0));
-    printf("[DB] Database ready with %d groundwater records\n", record_count);
-    
-    PQclear(res);
+    printf("Loaded %d groundwater assessment records\n", db.record_count);
     return true;
 }
 
-// Close database connection
+// Close database (no-op for sample data)
 void db_close(void) {
-    if (db_conn) {
-        PQfinish(db_conn);
-        db_conn = NULL;
-        printf("[DB] Database connection closed\n");
-    }
+    printf("Closing database...\n");
+    db.initialized = false;
+    db.records = NULL;
+    db.record_count = 0;
 }
 
-// Execute query and return result
-static PGresult* execute_query(const char* query) {
-    if (!db_conn) {
-        fprintf(stderr, "[DB ERROR] No database connection\n");
-        return NULL;
-    }
-    
-    PGresult *res = PQexec(db_conn, query);
-    
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        fprintf(stderr, "[DB ERROR] Query failed: %s\nQuery: %s\n", 
-                PQerrorMessage(db_conn), query);
-        PQclear(res);
-        return NULL;
-    }
-    
-    return res;
-}
-
-// Convert PGresult row to GroundwaterData structure
-static GroundwaterData pg_row_to_groundwater_data(PGresult *res, int row) {
-    GroundwaterData data = {0};
-    
-    // Map database columns to structure fields
-    strncpy(data.state, PQgetvalue(res, row, 0), sizeof(data.state) - 1);
-    strncpy(data.district, PQgetvalue(res, row, 1), sizeof(data.district) - 1);
-    strncpy(data.block, PQgetvalue(res, row, 2), sizeof(data.block) - 1);
-    strncpy(data.category, PQgetvalue(res, row, 3), sizeof(data.category) - 1);
-    
-    data.annual_recharge = atof(PQgetvalue(res, row, 4));
-    data.extractable_resource = atof(PQgetvalue(res, row, 5));
-    data.annual_extraction = atof(PQgetvalue(res, row, 6));
-    data.assessment_year = atoi(PQgetvalue(res, row, 7));
-    
-    return data;
-}
-
-// Query by location (state, district, block)
+// Query by location
 QueryResult* query_by_location(const char* state, const char* district, const char* block) {
-    if (!state) return NULL;
-    
-    char query[1024];
-    
-    if (block && strlen(block) > 0) {
-        // Query specific block
-        snprintf(query, sizeof(query),
-                "SELECT state, district, block, category, annual_recharge, "
-                "extractable_resource, annual_extraction, assessment_year "
-                "FROM v_latest_assessment "
-                "WHERE UPPER(state) = UPPER('%s') AND UPPER(district) = UPPER('%s') "
-                "AND UPPER(block) = UPPER('%s') "
-                "ORDER BY assessment_year DESC;",
-                state, district ? district : "", block);
-    } else if (district && strlen(district) > 0) {
-        // Query all blocks in district
-        snprintf(query, sizeof(query),
-                "SELECT state, district, block, category, annual_recharge, "
-                "extractable_resource, annual_extraction, assessment_year "
-                "FROM v_latest_assessment "
-                "WHERE UPPER(state) = UPPER('%s') AND UPPER(district) = UPPER('%s') "
-                "ORDER BY stage_of_extraction DESC;",
-                state, district);
-    } else {
-        // Query all districts in state
-        snprintf(query, sizeof(query),
-                "SELECT state, district, block, category, annual_recharge, "
-                "extractable_resource, annual_extraction, assessment_year "
-                "FROM v_latest_assessment "
-                "WHERE UPPER(state) = UPPER('%s') "
-                "ORDER BY stage_of_extraction DESC;",
-                state);
-    }
-    
-    PGresult *res = execute_query(query);
-    if (!res) return NULL;
-    
-    int num_rows = PQntuples(res);
-    
-    // Create QueryResult
-    QueryResult *result = malloc(sizeof(QueryResult));
-    if (!result) {
-        PQclear(res);
+    if (!db.initialized || !state || !district) {
         return NULL;
     }
     
-    result->data = malloc(sizeof(GroundwaterData) * num_rows);
-    if (!result->data && num_rows > 0) {
-        free(result);
-        PQclear(res);
+    clock_t start = clock();
+    
+    // Count matching records
+    int count = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].state, state) == 0 &&
+            strcasecmp(db.records[i].district, district) == 0) {
+            if (!block || strcasecmp(db.records[i].block, block) == 0) {
+                count++;
+            }
+        }
+    }
+    
+    if (count == 0) {
         return NULL;
     }
     
-    result->count = num_rows;
-    snprintf(result->query_type, sizeof(result->query_type), "Location Query");
-    result->execution_time_ms = 0.0; // TODO: Add timing
+    // Allocate result
+    QueryResult* result = malloc(sizeof(QueryResult));
+    result->data = malloc(count * sizeof(GroundwaterData));
+    result->count = count;
+    strcpy(result->query_type, "location_query");
     
-    // Convert rows to GroundwaterData
-    for (int i = 0; i < num_rows; i++) {
-        result->data[i] = pg_row_to_groundwater_data(res, i);
+    // Copy matching records
+    int index = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].state, state) == 0 &&
+            strcasecmp(db.records[i].district, district) == 0) {
+            if (!block || strcasecmp(db.records[i].block, block) == 0) {
+                result->data[index++] = db.records[i];
+            }
+        }
     }
     
-    PQclear(res);
+    result->execution_time_ms = ((double)(clock() - start)) * 1000 / CLOCKS_PER_SEC;
     return result;
 }
 
 // Query by state
 QueryResult* query_by_state(const char* state) {
-    return query_by_location(state, NULL, NULL);
+    if (!db.initialized || !state) {
+        return NULL;
+    }
+    
+    clock_t start = clock();
+    
+    int count = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].state, state) == 0) {
+            count++;
+        }
+    }
+    
+    if (count == 0) {
+        return NULL;
+    }
+    
+    QueryResult* result = malloc(sizeof(QueryResult));
+    result->data = malloc(count * sizeof(GroundwaterData));
+    result->count = count;
+    strcpy(result->query_type, "state_query");
+    
+    int index = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].state, state) == 0) {
+            result->data[index++] = db.records[i];
+        }
+    }
+    
+    result->execution_time_ms = ((double)(clock() - start)) * 1000 / CLOCKS_PER_SEC;
+    return result;
 }
 
 // Query by category
 QueryResult* query_by_category(const char* category) {
-    if (!category) return NULL;
-    
-    char query[1024];
-    snprintf(query, sizeof(query),
-            "SELECT state, district, block, category, annual_recharge, "
-            "extractable_resource, annual_extraction, assessment_year "
-            "FROM v_latest_assessment "
-            "WHERE UPPER(category) = UPPER('%s') "
-            "ORDER BY stage_of_extraction DESC "
-            "LIMIT 100;",
-            category);
-    
-    PGresult *res = execute_query(query);
-    if (!res) return NULL;
-    
-    int num_rows = PQntuples(res);
-    
-    QueryResult *result = malloc(sizeof(QueryResult));
-    if (!result) {
-        PQclear(res);
+    if (!db.initialized || !category) {
         return NULL;
     }
     
-    result->data = malloc(sizeof(GroundwaterData) * num_rows);
-    result->count = num_rows;
-    snprintf(result->query_type, sizeof(result->query_type), "Category Query: %s", category);
-    result->execution_time_ms = 0.0;
+    clock_t start = clock();
     
-    for (int i = 0; i < num_rows; i++) {
-        result->data[i] = pg_row_to_groundwater_data(res, i);
+    int count = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].category, category) == 0) {
+            count++;
+        }
     }
     
-    PQclear(res);
+    if (count == 0) {
+        return NULL;
+    }
+    
+    QueryResult* result = malloc(sizeof(QueryResult));
+    result->data = malloc(count * sizeof(GroundwaterData));
+    result->count = count;
+    strcpy(result->query_type, "category_query");
+    
+    int index = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].category, category) == 0) {
+            result->data[index++] = db.records[i];
+        }
+    }
+    
+    result->execution_time_ms = ((double)(clock() - start)) * 1000 / CLOCKS_PER_SEC;
     return result;
 }
 
 // Query critical areas
 QueryResult* query_critical_areas(void) {
-    char query[] = 
-        "SELECT state, district, block, category, annual_recharge, "
-        "extractable_resource, annual_extraction, assessment_year "
-        "FROM v_critical_areas "
-        "ORDER BY stage_of_extraction DESC "
-        "LIMIT 50;";
-    
-    PGresult *res = execute_query(query);
-    if (!res) return NULL;
-    
-    int num_rows = PQntuples(res);
-    
-    QueryResult *result = malloc(sizeof(QueryResult));
-    if (!result) {
-        PQclear(res);
+    if (!db.initialized) {
         return NULL;
     }
     
-    result->data = malloc(sizeof(GroundwaterData) * num_rows);
-    result->count = num_rows;
-    snprintf(result->query_type, sizeof(result->query_type), "Critical Areas");
-    result->execution_time_ms = 0.0;
+    clock_t start = clock();
     
-    for (int i = 0; i < num_rows; i++) {
-        result->data[i] = pg_row_to_groundwater_data(res, i);
-    }
-    
-    PQclear(res);
-    return result;
-}
-
-// Query historical trend
-QueryResult* query_historical_trend(const char* state, const char* district, const char* block) {
-    if (!state) return NULL;
-    
-    char query[1024];
-    
-    if (block && strlen(block) > 0) {
-        snprintf(query, sizeof(query),
-                "SELECT state, district, block, category, annual_recharge, "
-                "extractable_resource, annual_extraction, assessment_year "
-                "FROM groundwater_data "
-                "WHERE UPPER(state) = UPPER('%s') AND UPPER(district) = UPPER('%s') "
-                "AND UPPER(block) = UPPER('%s') "
-                "ORDER BY assessment_year DESC "
-                "LIMIT 10;",
-                state, district ? district : "", block);
-    } else {
-        snprintf(query, sizeof(query),
-                "SELECT state, district, block, category, annual_recharge, "
-                "extractable_resource, annual_extraction, assessment_year "
-                "FROM groundwater_data "
-                "WHERE UPPER(state) = UPPER('%s') "
-                "ORDER BY assessment_year DESC, stage_of_extraction DESC "
-                "LIMIT 20;",
-                state);
-    }
-    
-    PGresult *res = execute_query(query);
-    if (!res) return NULL;
-    
-    int num_rows = PQntuples(res);
-    
-    QueryResult *result = malloc(sizeof(QueryResult));
-    if (!result) {
-        PQclear(res);
-        return NULL;
-    }
-    
-    result->data = malloc(sizeof(GroundwaterData) * num_rows);
-    result->count = num_rows;
-    snprintf(result->query_type, sizeof(result->query_type), "Historical Trend");
-    result->execution_time_ms = 0.0;
-    
-    for (int i = 0; i < num_rows; i++) {
-        result->data[i] = pg_row_to_groundwater_data(res, i);
-    }
-    
-    PQclear(res);
-    return result;
-}
-
-// Get database statistics
-void print_database_stats(void) {
-    if (!db_conn) {
-        printf("[DB] No database connection\n");
-        return;
-    }
-    
-    // Get total records
-    PGresult *res = execute_query("SELECT COUNT(*) FROM groundwater_data;");
-    if (res) {
-        int total = atoi(PQgetvalue(res, 0, 0));
-        printf("[DB] Total records: %d\n", total);
-        PQclear(res);
-    }
-    
-    // Get records by category
-    res = execute_query(
-        "SELECT category, COUNT(*) FROM v_latest_assessment "
-        "GROUP BY category ORDER BY COUNT(*) DESC;"
-    );
-    
-    if (res) {
-        int num_rows = PQntuples(res);
-        printf("[DB] Records by category:\n");
-        
-        for (int i = 0; i < num_rows; i++) {
-            char *category = PQgetvalue(res, i, 0);
-            int count = atoi(PQgetvalue(res, i, 1));
-            printf("     %s: %d\n", category, count);
+    int count = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].category, "Critical") == 0 ||
+            strcasecmp(db.records[i].category, "Over-Exploited") == 0) {
+            count++;
         }
-        
-        PQclear(res);
     }
     
-    // Get latest assessment year
-    res = execute_query("SELECT MAX(assessment_year) FROM groundwater_data;");
-    if (res) {
-        int latest_year = atoi(PQgetvalue(res, 0, 0));
-        printf("[DB] Latest assessment year: %d\n", latest_year);
-        PQclear(res);
+    if (count == 0) {
+        return NULL;
     }
+    
+    QueryResult* result = malloc(sizeof(QueryResult));
+    result->data = malloc(count * sizeof(GroundwaterData));
+    result->count = count;
+    strcpy(result->query_type, "critical_areas");
+    
+    int index = 0;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].category, "Critical") == 0 ||
+            strcasecmp(db.records[i].category, "Over-Exploited") == 0) {
+            result->data[index++] = db.records[i];
+        }
+    }
+    
+    result->execution_time_ms = ((double)(clock() - start)) * 1000 / CLOCKS_PER_SEC;
+    return result;
+}
+
+// Query historical trend (simplified for sample data)
+QueryResult* query_historical_trend(const char* state, const char* district, const char* block) {
+    return query_by_location(state, district, block);
 }
 
 // Free query result
@@ -387,45 +205,32 @@ void free_query_result(QueryResult* result) {
     }
 }
 
-// Test database connection and functionality
-bool test_database_connection(void) {
-    if (!db_conn) {
-        printf("[DB TEST] No database connection\n");
-        return false;
+// Print database statistics
+void print_database_stats(void) {
+    if (!db.initialized) {
+        printf("Database not initialized\n");
+        return;
     }
     
-    printf("[DB TEST] Testing database functionality...\n");
+    int safe = 0, semi_critical = 0, critical = 0, over_exploited = 0;
     
-    // Test 1: Basic query
-    QueryResult *result = query_by_state("Punjab");
-    if (result && result->count > 0) {
-        printf("[DB TEST] ✅ State query successful (%d records)\n", result->count);
-        free_query_result(result);
-    } else {
-        printf("[DB TEST] ❌ State query failed\n");
-        return false;
+    for (int i = 0; i < db.record_count; i++) {
+        if (strcasecmp(db.records[i].category, "Safe") == 0) {
+            safe++;
+        } else if (strcasecmp(db.records[i].category, "Semi-Critical") == 0) {
+            semi_critical++;
+        } else if (strcasecmp(db.records[i].category, "Critical") == 0) {
+            critical++;
+        } else if (strcasecmp(db.records[i].category, "Over-Exploited") == 0) {
+            over_exploited++;
+        }
     }
     
-    // Test 2: Category query
-    result = query_by_category("Over-Exploited");
-    if (result) {
-        printf("[DB TEST] ✅ Category query successful (%d records)\n", result->count);
-        free_query_result(result);
-    } else {
-        printf("[DB TEST] ❌ Category query failed\n");
-        return false;
-    }
-    
-    // Test 3: Critical areas
-    result = query_critical_areas();
-    if (result) {
-        printf("[DB TEST] ✅ Critical areas query successful (%d records)\n", result->count);
-        free_query_result(result);
-    } else {
-        printf("[DB TEST] ❌ Critical areas query failed\n");
-        return false;
-    }
-    
-    printf("[DB TEST] ✅ All database tests passed!\n");
-    return true;
+    printf("\n=== Database Statistics ===\n");
+    printf("Total records: %d\n", db.record_count);
+    printf("Safe areas: %d\n", safe);
+    printf("Semi-Critical areas: %d\n", semi_critical);
+    printf("Critical areas: %d\n", critical);
+    printf("Over-Exploited areas: %d\n", over_exploited);
+    printf("========================\n\n");
 }

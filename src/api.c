@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <json-c/json.h>  // For JSON handling
+#include <time.h>
 
 // API endpoint handlers
 static void handle_chat_endpoint(struct mg_connection *c, struct mg_http_message *hm);
@@ -11,60 +11,57 @@ static void handle_status_endpoint(struct mg_connection *c, struct mg_http_messa
 static void handle_health_endpoint(struct mg_connection *c, struct mg_http_message *hm);
 static void handle_capabilities_endpoint(struct mg_connection *c, struct mg_http_message *hm);
 
-// Convert BotResponse to JSON
+// Convert BotResponse to JSON using mongoose JSON API
 char* bot_response_to_json(BotResponse* response) {
     if (!response) return NULL;
     
-    json_object *root = json_object_new_object();
-    json_object *message = json_object_new_string(response->message ? response->message : "");
-    json_object *intent = json_object_new_int(response->intent);
-    json_object *confidence = json_object_new_double(response->confidence_score);
-    json_object *processing_time = json_object_new_double(response->processing_time_ms);
-    json_object *has_data = json_object_new_boolean(response->has_data);
-    json_object *requires_clarification = json_object_new_boolean(response->requires_clarification);
+    char *buf = malloc(4096);
+    if (!buf) return NULL;
     
-    json_object_object_add(root, "message", message);
-    json_object_object_add(root, "intent", intent);
-    json_object_object_add(root, "confidence", confidence);
-    json_object_object_add(root, "processing_time_ms", processing_time);
-    json_object_object_add(root, "has_data", has_data);
-    json_object_object_add(root, "requires_clarification", requires_clarification);
+    int len = 0;
+    len += snprintf(buf + len, 4096 - len, 
+        "{\"message\":\"%s\",\"intent\":%d,\"confidence\":%.2f,\"processing_time_ms\":%.2f,\"has_data\":%s,\"requires_clarification\":%s",
+        response->message ? response->message : "",
+        response->intent,
+        response->confidence_score,
+        response->processing_time_ms,
+        response->has_data ? "true" : "false",
+        response->requires_clarification ? "true" : "false");
     
     // Add suggestions array
     if (response->suggestion_count > 0) {
-        json_object *suggestions = json_object_new_array();
+        len += snprintf(buf + len, 4096 - len, ",\"suggestions\":[");
         for (int i = 0; i < response->suggestion_count; i++) {
-            json_object *suggestion = json_object_new_string(response->suggested_actions[i]);
-            json_object_array_add(suggestions, suggestion);
+            len += snprintf(buf + len, 4096 - len, "\"%s\"%s", 
+                response->suggested_actions[i], 
+                i < response->suggestion_count - 1 ? "," : "");
         }
-        json_object_object_add(root, "suggestions", suggestions);
+        len += snprintf(buf + len, 4096 - len, "]");
     }
     
     // Add clarification question if needed
     if (response->clarification_question) {
-        json_object *clarification = json_object_new_string(response->clarification_question);
-        json_object_object_add(root, "clarification_question", clarification);
+        len += snprintf(buf + len, 4096 - len, ",\"clarification_question\":\"%s\"", 
+            response->clarification_question);
     }
     
     // Add data sources
     if (response->source_count > 0) {
-        json_object *sources = json_object_new_array();
+        len += snprintf(buf + len, 4096 - len, ",\"data_sources\":[");
         for (int i = 0; i < response->source_count; i++) {
-            json_object *source = json_object_new_string(response->data_sources[i]);
-            json_object_array_add(sources, source);
+            len += snprintf(buf + len, 4096 - len, "\"%s\"%s", 
+                response->data_sources[i], 
+                i < response->source_count - 1 ? "," : "");
         }
-        json_object_object_add(root, "data_sources", sources);
+        len += snprintf(buf + len, 4096 - len, "]");
     }
     
-    const char *json_string = json_object_to_json_string(root);
-    char *result = strdup(json_string);
-    
-    json_object_put(root);  // Free JSON object
-    return result;
+    len += snprintf(buf + len, 4096 - len, "}");
+    return buf;
 }
 
 // Main HTTP event handler
-static void http_handler(struct mg_connection *c, int ev, void *ev_data, void *fn_data) {
+static void http_handler(struct mg_connection *c, int ev, void *ev_data) {
     if (ev == MG_EV_HTTP_MSG) {
         struct mg_http_message *hm = (struct mg_http_message *) ev_data;
         
@@ -76,13 +73,13 @@ static void http_handler(struct mg_connection *c, int ev, void *ev_data, void *f
                      "Content-Type: application/json\r\n\r\n");
         
         // Route requests
-        if (mg_http_match_uri(hm, "/api/chat")) {
+        if (mg_match(hm->uri, mg_str("/api/chat"), NULL)) {
             handle_chat_endpoint(c, hm);
-        } else if (mg_http_match_uri(hm, "/api/status")) {
+        } else if (mg_match(hm->uri, mg_str("/api/status"), NULL)) {
             handle_status_endpoint(c, hm);
-        } else if (mg_http_match_uri(hm, "/api/health")) {
+        } else if (mg_match(hm->uri, mg_str("/api/health"), NULL)) {
             handle_health_endpoint(c, hm);
-        } else if (mg_http_match_uri(hm, "/api/capabilities")) {
+        } else if (mg_match(hm->uri, mg_str("/api/capabilities"), NULL)) {
             handle_capabilities_endpoint(c, hm);
         } else {
             // Serve static files or 404
@@ -94,31 +91,25 @@ static void http_handler(struct mg_connection *c, int ev, void *ev_data, void *f
 
 // Chat endpoint handler
 static void handle_chat_endpoint(struct mg_connection *c, struct mg_http_message *hm) {
-    if (mg_vcmp(&hm->method, "POST") != 0) {
+    if (mg_strcasecmp(hm->method, mg_str("POST")) != 0) {
         mg_printf(c, "{\"error\": \"Method not allowed\"}\n");
         return;
     }
     
-    // Parse JSON request
-    json_object *root = json_tokener_parse(hm->body.ptr);
-    if (!root) {
-        mg_printf(c, "{\"error\": \"Invalid JSON\"}\n");
+    // Parse JSON request using mongoose JSON API
+    char *user_message = mg_json_get_str(hm->body, "$.message");
+    if (!user_message) {
+        mg_printf(c, "{\"error\": \"Invalid JSON or missing message field\"}\n");
         return;
     }
-    
-    json_object *message_obj;
-    if (!json_object_object_get_ex(root, "message", &message_obj)) {
-        mg_printf(c, "{\"error\": \"Missing message field\"}\n");
-        json_object_put(root);
-        return;
-    }
-    
-    const char *user_message = json_object_get_string(message_obj);
     
     // Process with enhanced chatbot
+    clock_t start_time = clock();
     BotResponse* response = process_user_query(user_message);
+    clock_t end_time = clock();
     
     if (response) {
+        response->processing_time_ms = ((double)(end_time - start_time)) * 1000.0 / CLOCKS_PER_SEC;
         char* json_response = bot_response_to_json(response);
         if (json_response) {
             mg_printf(c, "%s\n", json_response);
@@ -126,75 +117,30 @@ static void handle_chat_endpoint(struct mg_connection *c, struct mg_http_message
         } else {
             mg_printf(c, "{\"error\": \"Failed to generate response\"}\n");
         }
-        free_enhanced_bot_response(response);
+        free_bot_response(response);
     } else {
         mg_printf(c, "{\"error\": \"Internal server error\"}\n");
     }
     
-    json_object_put(root);
+    free(user_message);
 }
 
 // Status endpoint handler
 static void handle_status_endpoint(struct mg_connection *c, struct mg_http_message *hm) {
-    json_object *root = json_object_new_object();
-    json_object *status = json_object_new_string("online");
-    json_object *version = json_object_new_string("2.0.0-enhanced");
-    json_object *capabilities = json_object_new_int(70);  // 70+ intents
-    json_object *uptime = json_object_new_int(time(NULL));  // Simple uptime
-    
-    json_object_object_add(root, "status", status);
-    json_object_object_add(root, "version", version);
-    json_object_object_add(root, "intent_count", capabilities);
-    json_object_object_add(root, "server_time", uptime);
-    
-    const char *json_string = json_object_to_json_string(root);
-    mg_printf(c, "%s\n", json_string);
-    
-    json_object_put(root);
+    mg_printf(c, "{\"status\":\"online\",\"version\":\"2.0.0-enhanced\",\"intent_count\":70,\"server_time\":%ld}\n", 
+              time(NULL));
 }
 
 // Health check endpoint
 static void handle_health_endpoint(struct mg_connection *c, struct mg_http_message *hm) {
-    mg_printf(c, "{\"status\": \"healthy\", \"timestamp\": %ld}\n", time(NULL));
+    (void)hm; // Suppress unused parameter warning
+    mg_printf(c, "{\"status\":\"healthy\",\"timestamp\":%ld}\n", time(NULL));
 }
 
 // Capabilities endpoint
 static void handle_capabilities_endpoint(struct mg_connection *c, struct mg_http_message *hm) {
-    json_object *root = json_object_new_object();
-    
-    // Create capabilities array
-    json_object *capabilities = json_object_new_array();
-    
-    const char* capability_list[] = {
-        "Location-based groundwater queries",
-        "Historical trend analysis",
-        "Multi-location comparisons", 
-        "Policy recommendations",
-        "Conservation method suggestions",
-        "Crisis area identification",
-        "Technical explanations",
-        "Context-aware conversations",
-        "Fuzzy string matching",
-        "Multi-language support framework",
-        "Real-time confidence scoring",
-        "Follow-up suggestions",
-        "Data source attribution"
-    };
-    
-    int cap_count = sizeof(capability_list) / sizeof(capability_list[0]);
-    for (int i = 0; i < cap_count; i++) {
-        json_object *cap = json_object_new_string(capability_list[i]);
-        json_object_array_add(capabilities, cap);
-    }
-    
-    json_object_object_add(root, "capabilities", capabilities);
-    json_object_object_add(root, "total_intents", json_object_new_int(70));
-    json_object_object_add(root, "supported_languages", json_object_new_string("English, Hindi (framework)"));
-    
-    const char *json_string = json_object_to_json_string(root);
-    mg_printf(c, "%s\n", json_string);
-    
-    json_object_put(root);
+    (void)hm; // Suppress unused parameter warning
+    mg_printf(c, "{\"capabilities\":[\"Location-based groundwater queries\",\"Historical trend analysis\",\"Multi-location comparisons\",\"Policy recommendations\",\"Conservation method suggestions\",\"Crisis area identification\",\"Technical explanations\",\"Context-aware conversations\",\"Fuzzy string matching\",\"Multi-language support framework\",\"Real-time confidence scoring\",\"Follow-up suggestions\",\"Data source attribution\"],\"total_intents\":70,\"supported_languages\":\"English, Hindi (framework)\"}\n");
 }
 
 // Start API server
@@ -209,7 +155,7 @@ int start_api_server(const char* port) {
     
     c = mg_http_listen(&mgr, listen_addr, http_handler, NULL);
     if (c == NULL) {
-        printf("❌ Failed to start API server on port %s\n", port);
+        printf("Failed to start API server on port %s\n", port);
         return 1;
     }
     
